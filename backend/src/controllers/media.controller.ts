@@ -644,6 +644,12 @@ export const proxyStream = async (req: Request, res: Response) => {
     let audioStreamIndex: number | null = null;
     let hlsPlaylistId: string | null = null; // Store playlistId when using /hls endpoint
     
+    // Extract hlsPlaylistId from query params if present (from rewritten playlist URLs)
+    if (req.query.hlsPlaylistId) {
+      hlsPlaylistId = req.query.hlsPlaylistId as string;
+      console.log('[proxyStream] Extracted hlsPlaylistId from query params:', hlsPlaylistId);
+    }
+    
     try {
       // Use userId endpoint to get item with user context
       const usersResponse = await axios.get(`${serverUrl}/Users`, {
@@ -956,6 +962,10 @@ export const proxyStream = async (req: Request, res: Response) => {
           if (mediaSourceId && !hlsPlaylistId) {
             // Only add mediaSourceId if not using HLS playlist (it's already in the playlist path)
             queryParams.set('mediaSourceId', mediaSourceId);
+          }
+          // IMPORTANT: Include hlsPlaylistId in rewritten URLs so segment requests can use it
+          if (hlsPlaylistId) {
+            queryParams.set('hlsPlaylistId', hlsPlaylistId);
           }
           const finalQueryString = queryParams.toString();
           
