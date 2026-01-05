@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+  <title>iFilm - Stream Your Media</title>
+  <meta name="description" content="Fast and Quick play Your Favourite Movie" />
+  <meta name="author" content="iFilm Team" />
+
+  <meta property="og:title" content="iFilm - Stream Your Media" />
+  <meta property="og:description" content="Fast and Quick play Your Favourite Movie" />
+  <meta property="og:type" content="website" />
+
+  <!-- Content Security Policy - Allow images and media from any source -->
+  <!-- Using * wildcard to allow all sources for images, media, and connections -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * 'self' data: blob:; media-src * 'self' blob: data:; connect-src * 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src * 'self' data:;">
+
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

@@ -1,0 +1,152 @@
+@startuml iFilm System Architecture
+
+!define RECTANGLE class
+
+skinparam packageStyle rectangle
+skinparam component {
+    BackgroundColor<<frontend>> LightBlue
+    BackgroundColor<<backend>> LightGreen
+    BackgroundColor<<external>> LightYellow
+    BackgroundColor<<database>> LightCoral
+}
+
+package "Client Layer" {
+    [Web Browser] as browser <<frontend>>
+}
+
+package "Frontend Layer (React.js)" {
+    [React App] as react <<frontend>>
+    [Components] as components <<frontend>>
+    [State Management\n(Redux Toolkit)] as redux <<frontend>>
+    [API Client\n(Axios)] as axios <<frontend>>
+    [Video Player\n(HLS.js)] as player <<frontend>>
+    [Router\n(React Router)] as router <<frontend>>
+}
+
+package "Backend Layer (Node.js + Express)" {
+    [API Gateway] as gateway <<backend>>
+    [Auth Middleware] as auth <<backend>>
+    [Rate Limiter] as ratelimit <<backend>>
+    
+    package "Controllers" {
+        [Auth Controller] as authctrl <<backend>>
+        [Media Controller] as mediactrl <<backend>>
+        [User Controller] as userctrl <<backend>>
+        [Admin Controller] as adminctrl <<backend>>
+    }
+    
+    package "Services" {
+        [Jellyfin Service] as jellyfinservice <<backend>>
+        [User Service] as userservice <<backend>>
+        [Watch History Service] as historyservice <<backend>>
+        [Favorites Service] as favservice <<backend>>
+        [Stream Service] as streamservice <<backend>>
+    }
+    
+    package "Security Layer" {
+        [JWT Manager] as jwt <<backend>>
+        [API Key Vault] as keyvault <<backend>>
+        [Token Refresh] as tokenrefresh <<backend>>
+        [Request Proxy] as proxy <<backend>>
+    }
+}
+
+package "Data Layer" {
+    database "PostgreSQL" as postgres <<database>> {
+        [users]
+        [watch_history]
+        [favorites]
+        [jellyfin_config]
+        [user_sessions]
+    }
+    
+    database "Redis Cache" as redis <<database>> {
+        [Session Store]
+        [Media Cache]
+        [Token Cache]
+    }
+}
+
+package "External Services" {
+    [Jellyfin Server] as jellyfin <<external>>
+    [Jellyfin REST API] as jellyfinapi <<external>>
+    [Media Storage] as storage <<external>>
+}
+
+' Client to Frontend connections
+browser --> react : HTTPS
+
+' Frontend internal connections
+react --> components
+react --> redux
+react --> router
+react --> axios
+react --> player
+
+' Frontend to Backend connections
+axios --> gateway : REST API\n(HTTPS)
+
+' Backend Gateway flow
+gateway --> auth : Validate
+gateway --> ratelimit : Check limits
+gateway --> authctrl
+gateway --> mediactrl
+gateway --> userctrl
+gateway --> adminctrl
+
+' Controllers to Services
+authctrl --> userservice
+authctrl --> jwt
+mediactrl --> jellyfinservice
+mediactrl --> historyservice
+mediactrl --> favservice
+userctrl --> userservice
+userctrl --> historyservice
+userctrl --> favservice
+adminctrl --> jellyfinservice
+
+' Services to Security
+jellyfinservice --> keyvault : Get API Keys
+jellyfinservice --> proxy : Proxy requests
+streamservice --> tokenrefresh : Refresh tokens
+streamservice --> jwt : Generate stream tokens
+
+' Services to Data Layer
+userservice --> postgres
+historyservice --> postgres
+favservice --> postgres
+jellyfinservice --> postgres
+userservice --> redis
+jellyfinservice --> redis
+
+' Backend to External
+proxy --> jellyfinapi : Authenticated\nRequests
+jellyfinapi --> jellyfin
+jellyfin --> storage : Media Files
+
+' Video streaming flow
+player ..> streamservice : Request stream URL
+streamservice ..> proxy : Generate secure URL
+proxy ..> jellyfin : HLS/DASH stream
+
+note right of keyvault
+    - Encrypts Jellyfin API keys
+    - Environment variable storage
+    - Never exposed to frontend
+end note
+
+note right of proxy
+    - Hides Jellyfin server details
+    - Adds authentication headers
+    - Validates stream tokens
+    - Logs all requests
+end note
+
+note right of redis
+    - Session management
+    - Media metadata cache (5 min TTL)
+    - Token blacklist
+    - Rate limiting counters
+end note
+
+@enduml

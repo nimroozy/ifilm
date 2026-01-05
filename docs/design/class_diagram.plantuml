@@ -1,0 +1,354 @@
+@startuml iFilm Class Diagram
+
+' Frontend Interfaces and Classes
+package "Frontend (React.js + TypeScript)" {
+    
+    interface IMediaItem {
+        +id: string
+        +title: string
+        +type: "movie" | "series"
+        +overview: string
+        +posterUrl: string
+        +backdropUrl: string
+        +year: number
+        +rating: number
+        +duration: number
+        +genres: string[]
+    }
+    
+    interface IEpisode {
+        +id: string
+        +seriesId: string
+        +seasonNumber: number
+        +episodeNumber: number
+        +title: string
+        +overview: string
+        +duration: number
+        +thumbnailUrl: string
+    }
+    
+    interface IStreamInfo {
+        +streamUrl: string
+        +token: string
+        +expiresAt: Date
+        +subtitles: ISubtitle[]
+        +qualities: IQuality[]
+    }
+    
+    interface ISubtitle {
+        +language: string
+        +label: string
+        +url: string
+    }
+    
+    interface IQuality {
+        +resolution: string
+        +bitrate: number
+        +url: string
+    }
+    
+    interface IUser {
+        +id: string
+        +email: string
+        +username: string
+        +role: "user" | "admin"
+        +avatar?: string
+        +createdAt: Date
+    }
+    
+    interface IWatchHistory {
+        +id: string
+        +userId: string
+        +mediaId: string
+        +mediaType: "movie" | "episode"
+        +progress: number
+        +duration: number
+        +lastWatched: Date
+    }
+    
+    interface IFavorite {
+        +id: string
+        +userId: string
+        +mediaId: string
+        +mediaType: "movie" | "series"
+        +addedAt: Date
+    }
+    
+    class ApiClient {
+        -baseURL: string
+        -axiosInstance: AxiosInstance
+        +constructor(baseURL: string)
+        +setAuthToken(token: string): void
+        +get<T>(endpoint: string, params?: object): Promise<T>
+        +post<T>(endpoint: string, data: object): Promise<T>
+        +put<T>(endpoint: string, data: object): Promise<T>
+        +delete<T>(endpoint: string): Promise<T>
+    }
+    
+    class AuthService {
+        -apiClient: ApiClient
+        +login(email: string, password: string): Promise<IAuthResponse>
+        +register(email: string, username: string, password: string): Promise<IAuthResponse>
+        +logout(): Promise<void>
+        +refreshToken(): Promise<string>
+        +getCurrentUser(): Promise<IUser>
+    }
+    
+    class MediaService {
+        -apiClient: ApiClient
+        +getMovies(page: number, limit: number): Promise<IPaginatedResponse<IMediaItem>>
+        +getSeries(page: number, limit: number): Promise<IPaginatedResponse<IMediaItem>>
+        +getMediaDetails(id: string, type: string): Promise<IMediaItem>
+        +getSeasons(seriesId: string): Promise<ISeason[]>
+        +getEpisodes(seriesId: string, seasonNumber: number): Promise<IEpisode[]>
+        +search(query: string): Promise<IMediaItem[]>
+        +getStreamInfo(mediaId: string, mediaType: string): Promise<IStreamInfo>
+    }
+    
+    class UserService {
+        -apiClient: ApiClient
+        +getWatchHistory(): Promise<IWatchHistory[]>
+        +updateWatchProgress(mediaId: string, progress: number, duration: number): Promise<void>
+        +getFavorites(): Promise<IFavorite[]>
+        +addFavorite(mediaId: string, mediaType: string): Promise<void>
+        +removeFavorite(favoriteId: string): Promise<void>
+        +updateProfile(data: Partial<IUser>): Promise<IUser>
+    }
+    
+    class VideoPlayer {
+        -hls: Hls
+        -videoElement: HTMLVideoElement
+        -currentTime: number
+        -duration: number
+        +constructor(videoElement: HTMLVideoElement)
+        +loadSource(streamUrl: string): void
+        +play(): Promise<void>
+        +pause(): void
+        +seek(time: number): void
+        +setQuality(qualityIndex: number): void
+        +loadSubtitles(subtitles: ISubtitle[]): void
+        +getCurrentTime(): number
+        +getDuration(): number
+        +destroy(): void
+    }
+    
+    class ReduxStore {
+        -auth: IAuthState
+        -media: IMediaState
+        -user: IUserState
+        -player: IPlayerState
+        +dispatch(action: Action): void
+        +getState(): IRootState
+        +subscribe(listener: Function): Unsubscribe
+    }
+}
+
+' Backend Classes
+package "Backend (Node.js + TypeScript)" {
+    
+    class User {
+        +id: string
+        +email: string
+        +username: string
+        +passwordHash: string
+        +role: "user" | "admin"
+        +avatar?: string
+        +createdAt: Date
+        +updatedAt: Date
+        +validatePassword(password: string): Promise<boolean>
+        +generateAuthToken(): string
+    }
+    
+    class WatchHistory {
+        +id: string
+        +userId: string
+        +mediaId: string
+        +mediaType: "movie" | "episode"
+        +progress: number
+        +duration: number
+        +lastWatched: Date
+        +createdAt: Date
+        +updatedAt: Date
+    }
+    
+    class Favorite {
+        +id: string
+        +userId: string
+        +mediaId: string
+        +mediaType: "movie" | "series"
+        +addedAt: Date
+    }
+    
+    class JellyfinConfig {
+        +id: string
+        +serverUrl: string
+        +apiKeyEncrypted: string
+        +userId: string
+        +isActive: boolean
+        +createdAt: Date
+        +updatedAt: Date
+        +decryptApiKey(): string
+    }
+    
+    class UserSession {
+        +id: string
+        +userId: string
+        +token: string
+        +refreshToken: string
+        +expiresAt: Date
+        +createdAt: Date
+    }
+    
+    interface IJellyfinClient {
+        +authenticate(serverUrl: string, apiKey: string): Promise<boolean>
+        +getLibraries(): Promise<IJellyfinLibrary[]>
+        +getMovies(libraryId: string, startIndex: number, limit: number): Promise<IJellyfinItem[]>
+        +getSeries(libraryId: string, startIndex: number, limit: number): Promise<IJellyfinItem[]>
+        +getItemDetails(itemId: string): Promise<IJellyfinItem>
+        +getSeasons(seriesId: string): Promise<IJellyfinSeason[]>
+        +getEpisodes(seriesId: string, seasonId: string): Promise<IJellyfinEpisode[]>
+        +getStreamUrl(itemId: string, userId: string): Promise<string>
+        +getImageUrl(itemId: string, imageType: string): string
+        +search(query: string): Promise<IJellyfinItem[]>
+    }
+    
+    class JellyfinService {
+        -config: JellyfinConfig
+        -client: IJellyfinClient
+        -cache: RedisCache
+        +constructor(config: JellyfinConfig)
+        +testConnection(): Promise<boolean>
+        +syncLibraries(): Promise<void>
+        +getMovies(page: number, limit: number): Promise<IMediaItem[]>
+        +getSeries(page: number, limit: number): Promise<IMediaItem[]>
+        +getMediaDetails(id: string): Promise<IMediaItem>
+        +getSeasons(seriesId: string): Promise<ISeason[]>
+        +getEpisodes(seriesId: string, seasonNumber: number): Promise<IEpisode[]>
+        +generateStreamUrl(mediaId: string, userId: string): Promise<IStreamInfo>
+        +search(query: string): Promise<IMediaItem[]>
+        -transformJellyfinItem(item: IJellyfinItem): IMediaItem
+    }
+    
+    class AuthController {
+        -userService: UserService
+        -jwtManager: JWTManager
+        +register(req: Request, res: Response): Promise<Response>
+        +login(req: Request, res: Response): Promise<Response>
+        +logout(req: Request, res: Response): Promise<Response>
+        +refreshToken(req: Request, res: Response): Promise<Response>
+        +getCurrentUser(req: Request, res: Response): Promise<Response>
+    }
+    
+    class MediaController {
+        -jellyfinService: JellyfinService
+        -watchHistoryService: WatchHistoryService
+        +getMovies(req: Request, res: Response): Promise<Response>
+        +getSeries(req: Request, res: Response): Promise<Response>
+        +getMediaDetails(req: Request, res: Response): Promise<Response>
+        +getSeasons(req: Request, res: Response): Promise<Response>
+        +getEpisodes(req: Request, res: Response): Promise<Response>
+        +getStreamInfo(req: Request, res: Response): Promise<Response>
+        +search(req: Request, res: Response): Promise<Response>
+    }
+    
+    class UserController {
+        -userService: UserService
+        -watchHistoryService: WatchHistoryService
+        -favoritesService: FavoritesService
+        +getWatchHistory(req: Request, res: Response): Promise<Response>
+        +updateWatchProgress(req: Request, res: Response): Promise<Response>
+        +getFavorites(req: Request, res: Response): Promise<Response>
+        +addFavorite(req: Request, res: Response): Promise<Response>
+        +removeFavorite(req: Request, res: Response): Promise<Response>
+        +updateProfile(req: Request, res: Response): Promise<Response>
+    }
+    
+    class AdminController {
+        -jellyfinService: JellyfinService
+        -userService: UserService
+        +connectJellyfin(req: Request, res: Response): Promise<Response>
+        +testConnection(req: Request, res: Response): Promise<Response>
+        +syncLibraries(req: Request, res: Response): Promise<Response>
+        +getUsers(req: Request, res: Response): Promise<Response>
+        +updateUser(req: Request, res: Response): Promise<Response>
+        +deleteUser(req: Request, res: Response): Promise<Response>
+    }
+    
+    class JWTManager {
+        -secret: string
+        -accessTokenExpiry: string
+        -refreshTokenExpiry: string
+        +generateAccessToken(userId: string, role: string): string
+        +generateRefreshToken(userId: string): string
+        +verifyAccessToken(token: string): IJWTPayload
+        +verifyRefreshToken(token: string): IJWTPayload
+        +generateStreamToken(mediaId: string, userId: string): string
+        +verifyStreamToken(token: string): IStreamTokenPayload
+    }
+    
+    class APIKeyVault {
+        -encryptionKey: string
+        +encrypt(apiKey: string): string
+        +decrypt(encryptedKey: string): string
+        +rotateKey(): void
+    }
+    
+    class RequestProxy {
+        -jellyfinService: JellyfinService
+        -jwtManager: JWTManager
+        +proxyRequest(req: Request, res: Response): Promise<Response>
+        +validateStreamToken(token: string): boolean
+        +addAuthHeaders(headers: object, apiKey: string): object
+        +logRequest(userId: string, endpoint: string): void
+    }
+    
+    class RateLimiter {
+        -redis: RedisCache
+        -maxRequests: number
+        -windowMs: number
+        +checkLimit(userId: string, endpoint: string): Promise<boolean>
+        +incrementCounter(userId: string, endpoint: string): Promise<void>
+    }
+}
+
+' Relationships
+ApiClient --> AuthService
+ApiClient --> MediaService
+ApiClient --> UserService
+
+AuthService --> IUser
+MediaService --> IMediaItem
+MediaService --> IEpisode
+MediaService --> IStreamInfo
+UserService --> IWatchHistory
+UserService --> IFavorite
+
+VideoPlayer --> IStreamInfo
+VideoPlayer --> ISubtitle
+
+ReduxStore --> IUser
+ReduxStore --> IMediaItem
+
+AuthController --> User
+AuthController --> JWTManager
+MediaController --> JellyfinService
+MediaController --> WatchHistory
+UserController --> User
+UserController --> WatchHistory
+UserController --> Favorite
+AdminController --> JellyfinService
+AdminController --> User
+
+JellyfinService --> IJellyfinClient
+JellyfinService --> JellyfinConfig
+JellyfinService --> APIKeyVault
+
+RequestProxy --> JellyfinService
+RequestProxy --> JWTManager
+
+User "1" -- "0..*" WatchHistory
+User "1" -- "0..*" Favorite
+User "1" -- "0..*" UserSession
+User "1" -- "0..1" JellyfinConfig
+
+@enduml

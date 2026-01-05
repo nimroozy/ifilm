@@ -1,0 +1,30 @@
+module.exports = {
+  apps: [
+    {
+      name: 'ifilm-backend',
+      script: './backend/dist/server.js',
+      cwd: '/opt/ifilm',
+      instances: 2,
+      exec_mode: 'cluster',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 5000,
+        CORS_ORIGIN: 'http://167.172.206.254:3000',
+        DB_HOST: 'localhost',
+        DB_PORT: '5432',
+        DB_NAME: 'ifilm',
+        DB_USER: 'postgres',
+        DB_PASSWORD: 'ifilm_secure_pass_2024',
+        REDIS_HOST: 'localhost',
+        REDIS_PORT: '6379',
+      },
+      error_file: '/var/log/ifilm/backend-error.log',
+      out_file: '/var/log/ifilm/backend-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+      autorestart: true,
+      max_memory_restart: '1G',
+      watch: false,
+    },
+  ],
+};

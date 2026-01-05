@@ -1,0 +1,229 @@
+@startuml iFilm UI Navigation Flow
+
+[*] --> Landing : Initial visit
+
+state "Landing Page" as Landing {
+    [*] --> Hero
+    Hero : Featured content carousel
+    Hero : Sign up / Login CTAs
+}
+
+state "Authentication" as Auth {
+    state "Login" as Login
+    state "Register" as Register
+    state "Forgot Password" as Forgot
+    
+    Login : Email + Password form
+    Register : Email + Username + Password
+    Forgot : Email recovery
+}
+
+state "Main Application" as App {
+    [*] --> Home
+    
+    state "Home Page" as Home {
+        Home : Continue watching row
+        Home : Trending movies
+        Home : Popular series
+        Home : Recommended for you
+    }
+    
+    state "Movies Browse" as Movies {
+        Movies : Genre filters
+        Movies : Sort options
+        Movies : Infinite scroll grid
+    }
+    
+    state "Series Browse" as Series {
+        Series : Genre filters
+        Series : Sort options
+        Series : Infinite scroll grid
+    }
+    
+    state "Search Results" as Search {
+        Search : Search bar
+        Search : Filter by type
+        Search : Results grid
+    }
+    
+    state "Media Details" as Details {
+        Details : Hero section with backdrop
+        Details : Play button
+        Details : Add to favorites
+        Details : Synopsis & metadata
+        Details : Cast & crew
+        Details : Similar content
+        Details : Seasons (for series)
+    }
+    
+    state "Video Player" as Player {
+        Player : Full-screen video
+        Player : Controls overlay
+        Player : Quality selector
+        Player : Subtitle selector
+        Player : Progress bar
+        Player : Next episode (series)
+    }
+    
+    state "My List" as MyList {
+        MyList : Favorited content
+        MyList : Remove from list
+        MyList : Sort options
+    }
+    
+    state "Watch History" as History {
+        History : Continue watching
+        History : Recently watched
+        History : Clear history
+    }
+    
+    state "User Profile" as Profile {
+        Profile : Account settings
+        Profile : Avatar upload
+        Profile : Playback preferences
+        Profile : Language settings
+    }
+    
+    state "Admin Panel" as Admin {
+        state "Jellyfin Config" as JConfig {
+            JConfig : Server URL input
+            JConfig : API key input
+            JConfig : Test connection
+            JConfig : Sync libraries
+        }
+        
+        state "User Management" as UserMgmt {
+            UserMgmt : User list
+            UserMgmt : Edit user
+            UserMgmt : Delete user
+            UserMgmt : Role assignment
+        }
+        
+        state "Library Management" as LibMgmt {
+            LibMgmt : Library visibility
+            LibMgmt : Sync status
+            LibMgmt : Force sync
+        }
+        
+        state "Analytics" as Analytics {
+            Analytics : User activity
+            Analytics : Popular content
+            Analytics : Stream logs
+        }
+    }
+}
+
+' Landing to Auth
+Landing --> Auth : Click Login/Register
+Auth --> Landing : Back to home
+
+' Auth to App
+Auth --> App : Successful login
+
+' Main navigation (always accessible)
+Home --> Movies : Click Movies
+Home --> Series : Click Series
+Home --> Search : Click Search
+Home --> MyList : Click My List
+Home --> History : Click History
+Home --> Profile : Click Profile
+
+Movies --> Home : Click Home
+Movies --> Series : Click Series
+Movies --> Search : Click Search
+Movies --> MyList : Click My List
+Movies --> Profile : Click Profile
+
+Series --> Home : Click Home
+Series --> Movies : Click Movies
+Series --> Search : Click Search
+Series --> MyList : Click My List
+Series --> Profile : Click Profile
+
+Search --> Home : Click Home
+Search --> Movies : Click Movies
+Search --> Series : Click Series
+Search --> MyList : Click My List
+Search --> Profile : Click Profile
+
+MyList --> Home : Click Home
+MyList --> Movies : Click Movies
+MyList --> Series : Click Series
+MyList --> Search : Click Search
+MyList --> Profile : Click Profile
+
+History --> Home : Click Home
+History --> Movies : Click Movies
+History --> Series : Click Series
+History --> Search : Click Search
+History --> Profile : Click Profile
+
+' Content detail navigation
+Movies --> Details : Click movie card
+Series --> Details : Click series card
+Search --> Details : Click result
+Home --> Details : Click content
+MyList --> Details : Click item
+History --> Details : Click item
+
+Details --> Home : Back button
+Details --> Movies : Back to movies
+Details --> Series : Back to series
+Details --> Player : Click Play
+
+' Player navigation
+Player --> Details : Close player
+Player --> Player : Next episode (auto)
+
+' Profile navigation
+Profile --> Home : Back to home
+Profile --> Auth : Logout
+
+' Admin navigation (admin users only)
+Profile --> Admin : Admin panel link
+Admin --> JConfig : Jellyfin settings
+Admin --> UserMgmt : Manage users
+Admin --> LibMgmt : Manage libraries
+Admin --> Analytics : View analytics
+
+JConfig --> Admin : Back
+UserMgmt --> Admin : Back
+LibMgmt --> Admin : Back
+Analytics --> Admin : Back
+
+Admin --> Profile : Back to profile
+
+' Exit
+App --> Landing : Logout
+App --> [*] : Close browser
+
+note right of Landing
+    Public access
+    No authentication required
+end note
+
+note right of Auth
+    Form validation
+    Error handling
+    Remember me option
+end note
+
+note right of Home
+    Personalized content
+    Max 3 clicks to any content
+    Persistent navigation bar
+end note
+
+note right of Player
+    Auto-save progress
+    Keyboard shortcuts
+    Mobile-friendly controls
+end note
+
+note right of Admin
+    Admin role required
+    Audit logging
+    Restricted access
+end note
+
+@enduml

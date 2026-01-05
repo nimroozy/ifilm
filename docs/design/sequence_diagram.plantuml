@@ -1,0 +1,563 @@
+@startuml iFilm Sequence Diagrams
+
+title User Authentication Flow
+
+actor User
+participant "React App" as React
+participant "API Gateway" as Gateway
+participant "Auth Controller" as AuthCtrl
+participant "User Service" as UserSvc
+participant "JWT Manager" as JWT
+participant "PostgreSQL" as DB
+participant "Redis" as Cache
+
+== User Registration ==
+User -> React: Fill registration form
+note right
+    Input: {
+        "email": "user@example.com",
+        "username": "john_doe",
+        "password": "SecurePass123!"
+    }
+end note
+
+React -> Gateway: POST /api/auth/register
+Gateway -> AuthCtrl: register(req, res)
+AuthCtrl -> UserSvc: createUser(email, username, password)
+UserSvc -> UserSvc: hashPassword(password)
+UserSvc -> DB: INSERT INTO users
+note right
+    Input: {
+        "email": "user@example.com",
+        "username": "john_doe",
+        "password_hash": "$2b$10$...",
+        "role": "user"
+    }
+end note
+
+DB --> UserSvc: User created
+note right
+    Output: {
+        "id": "uuid-123",
+        "email": "user@example.com",
+        "username": "john_doe",
+        "role": "user",
+        "created_at": "2025-01-15T10:00:00Z"
+    }
+end note
+
+UserSvc -> JWT: generateAccessToken(userId, role)
+JWT --> UserSvc: accessToken
+UserSvc -> JWT: generateRefreshToken(userId)
+JWT --> UserSvc: refreshToken
+UserSvc -> Cache: SET session:uuid-123
+UserSvc --> AuthCtrl: User + tokens
+AuthCtrl --> Gateway: 201 Created
+Gateway --> React: Response
+note right
+    Output: {
+        "user": {
+            "id": "uuid-123",
+            "email": "user@example.com",
+            "username": "john_doe",
+            "role": "user"
+        },
+        "accessToken": "eyJhbGc...",
+        "refreshToken": "eyJhbGc...",
+        "expiresIn": 3600
+    }
+end note
+
+React -> React: Store tokens in localStorage
+React --> User: Registration successful
+
+== User Login ==
+User -> React: Enter credentials
+note right
+    Input: {
+        "email": "user@example.com",
+        "password": "SecurePass123!"
+    }
+end note
+
+React -> Gateway: POST /api/auth/login
+Gateway -> AuthCtrl: login(req, res)
+AuthCtrl -> UserSvc: authenticateUser(email, password)
+UserSvc -> DB: SELECT * FROM users WHERE email = ?
+DB --> UserSvc: User record
+UserSvc -> UserSvc: validatePassword(password, passwordHash)
+UserSvc -> JWT: generateAccessToken(userId, role)
+JWT --> UserSvc: accessToken
+UserSvc -> JWT: generateRefreshToken(userId)
+JWT --> UserSvc: refreshToken
+UserSvc -> Cache: SET session:uuid-123
+UserSvc --> AuthCtrl: User + tokens
+AuthCtrl --> Gateway: 200 OK
+Gateway --> React: Response
+note right
+    Output: {
+        "user": {
+            "id": "uuid-123",
+            "email": "user@example.com",
+            "username": "john_doe",
+            "role": "user"
+        },
+        "accessToken": "eyJhbGc...",
+        "refreshToken": "eyJhbGc...",
+        "expiresIn": 3600
+    }
+end note
+
+React -> React: Store tokens
+React --> User: Login successful
+
+@enduml
+
+@startuml Media Browsing Flow
+
+title Media Browsing and Details
+
+actor User
+participant "React App" as React
+participant "API Gateway" as Gateway
+participant "Auth Middleware" as Auth
+participant "Media Controller" as MediaCtrl
+participant "Jellyfin Service" as JellyfinSvc
+participant "Jellyfin API" as JellyfinAPI
+participant "Redis Cache" as Cache
+participant "PostgreSQL" as DB
+
+== Get Movies List ==
+User -> React: Navigate to Movies page
+React -> Gateway: GET /api/media/movies?page=1&limit=20
+note right
+    Headers: {
+        "Authorization": "Bearer eyJhbGc..."
+    }
+end note
+
+Gateway -> Auth: Verify JWT token
+Auth -> Auth: validateToken(token)
+Auth --> Gateway: User authenticated (userId: uuid-123)
+
+Gateway -> MediaCtrl: getMovies(req, res)
+MediaCtrl -> JellyfinSvc: getMovies(page=1, limit=20)
+
+JellyfinSvc -> Cache: GET movies:page:1
+Cache --> JellyfinSvc: Cache miss
+
+JellyfinSvc -> JellyfinAPI: GET /Items?IncludeItemTypes=Movie
+note right
+    Headers: {
+        "X-Emby-Token": "decrypted-api-key"
+    }
+end note
+
+JellyfinAPI --> JellyfinSvc: Jellyfin items
+note right
+    Output: {
+        "Items": [
+            {
+                "Id": "jf-movie-1",
+                "Name": "The Matrix",
+                "Type": "Movie",
+                "ProductionYear": 1999,
+                "CommunityRating": 8.7,
+                "RunTimeTicks": 81600000000
+            }
+        ],
+        "TotalRecordCount": 150
+    }
+end note
+
+JellyfinSvc -> JellyfinSvc: transformJellyfinItems(items)
+JellyfinSvc -> Cache: SET movies:page:1 (TTL: 300s)
+JellyfinSvc --> MediaCtrl: Transformed movies
+MediaCtrl --> Gateway: 200 OK
+Gateway --> React: Response
+note right
+    Output: {
+        "movies": [
+            {
+                "id": "jf-movie-1",
+                "title": "The Matrix",
+                "type": "movie",
+                "year": 1999,
+                "rating": 8.7,
+                "duration": 8160,
+                "posterUrl": "https://jellyfin/Items/jf-movie-1/Images/Primary",
+                "backdropUrl": "https://jellyfin/Items/jf-movie-1/Images/Backdrop"
+            }
+        ],
+        "total": 150,
+        "page": 1,
+        "limit": 20
+    }
+end note
+
+React -> React: Render movie grid
+React --> User: Display movies
+
+== Get Movie Details ==
+User -> React: Click on movie
+React -> Gateway: GET /api/media/movies/jf-movie-1
+Gateway -> Auth: Verify token
+Auth --> Gateway: Authenticated
+
+Gateway -> MediaCtrl: getMediaDetails(req, res)
+MediaCtrl -> JellyfinSvc: getMediaDetails(id="jf-movie-1")
+JellyfinSvc -> Cache: GET media:jf-movie-1
+Cache --> JellyfinSvc: Cache miss
+
+JellyfinSvc -> JellyfinAPI: GET /Items/jf-movie-1
+JellyfinAPI --> JellyfinSvc: Detailed item data
+note right
+    Output: {
+        "Id": "jf-movie-1",
+        "Name": "The Matrix",
+        "Overview": "A computer hacker...",
+        "Genres": ["Action", "Sci-Fi"],
+        "People": [...],
+        "Studios": [...],
+        "CommunityRating": 8.7
+    }
+end note
+
+JellyfinSvc -> JellyfinSvc: transformJellyfinItem(item)
+JellyfinSvc -> Cache: SET media:jf-movie-1 (TTL: 300s)
+
+' Check watch history
+MediaCtrl -> DB: SELECT * FROM watch_history WHERE user_id=? AND media_id=?
+DB --> MediaCtrl: Watch history record
+note right
+    Output: {
+        "progress": 1200,
+        "duration": 8160,
+        "last_watched": "2025-01-14T20:30:00Z"
+    }
+end note
+
+' Check if favorited
+MediaCtrl -> DB: SELECT * FROM favorites WHERE user_id=? AND media_id=?
+DB --> MediaCtrl: Favorite record or null
+
+MediaCtrl --> Gateway: 200 OK
+Gateway --> React: Response
+note right
+    Output: {
+        "id": "jf-movie-1",
+        "title": "The Matrix",
+        "overview": "A computer hacker...",
+        "genres": ["Action", "Sci-Fi"],
+        "rating": 8.7,
+        "year": 1999,
+        "duration": 8160,
+        "posterUrl": "...",
+        "backdropUrl": "...",
+        "cast": [...],
+        "watchProgress": {
+            "progress": 1200,
+            "percentage": 14.7
+        },
+        "isFavorite": true
+    }
+end note
+
+React --> User: Display movie details
+
+@enduml
+
+@startuml Video Streaming Flow
+
+title Video Streaming and Playback
+
+actor User
+participant "React App" as React
+participant "Video Player" as Player
+participant "API Gateway" as Gateway
+participant "Auth Middleware" as Auth
+participant "Media Controller" as MediaCtrl
+participant "Stream Service" as StreamSvc
+participant "JWT Manager" as JWT
+participant "Request Proxy" as Proxy
+participant "Jellyfin API" as JellyfinAPI
+participant "PostgreSQL" as DB
+
+== Request Stream URL ==
+User -> React: Click Play button
+React -> Gateway: POST /api/media/stream
+note right
+    Input: {
+        "mediaId": "jf-movie-1",
+        "mediaType": "movie"
+    }
+    Headers: {
+        "Authorization": "Bearer eyJhbGc..."
+    }
+end note
+
+Gateway -> Auth: Verify token
+Auth --> Gateway: Authenticated (userId: uuid-123)
+
+Gateway -> MediaCtrl: getStreamInfo(req, res)
+MediaCtrl -> StreamSvc: generateStreamUrl(mediaId, userId)
+
+StreamSvc -> JWT: generateStreamToken(mediaId, userId)
+note right
+    Token payload: {
+        "userId": "uuid-123",
+        "mediaId": "jf-movie-1",
+        "exp": 1705334400
+    }
+end note
+
+JWT --> StreamSvc: streamToken
+
+StreamSvc -> Proxy: getProxiedStreamUrl(mediaId, streamToken)
+Proxy -> JellyfinAPI: GET /Items/jf-movie-1/PlaybackInfo
+note right
+    Headers: {
+        "X-Emby-Token": "decrypted-api-key",
+        "X-Emby-UserId": "jellyfin-user-id"
+    }
+end note
+
+JellyfinAPI --> Proxy: Playback info
+note right
+    Output: {
+        "MediaSources": [
+            {
+                "Id": "source-1",
+                "Protocol": "Http",
+                "SupportsTranscoding": true,
+                "SupportsDirectStream": true,
+                "Container": "mp4",
+                "Path": "/Videos/jf-movie-1/stream"
+            }
+        ]
+    }
+end note
+
+Proxy -> Proxy: buildProxiedUrl(mediaId, streamToken)
+Proxy --> StreamSvc: Proxied URL
+
+' Get subtitles
+StreamSvc -> JellyfinAPI: GET /Items/jf-movie-1/Subtitles
+JellyfinAPI --> StreamSvc: Subtitle tracks
+note right
+    Output: [
+        {
+            "Language": "eng",
+            "DisplayTitle": "English",
+            "Index": 0,
+            "DeliveryUrl": "/Videos/jf-movie-1/Subtitles/0/Stream.vtt"
+        }
+    ]
+end note
+
+StreamSvc --> MediaCtrl: Stream info
+MediaCtrl --> Gateway: 200 OK
+Gateway --> React: Response
+note right
+    Output: {
+        "streamUrl": "https://ifilm.com/api/stream/jf-movie-1?token=eyJhbGc...",
+        "token": "eyJhbGc...",
+        "expiresAt": "2025-01-15T11:00:00Z",
+        "subtitles": [
+            {
+                "language": "eng",
+                "label": "English",
+                "url": "https://ifilm.com/api/stream/jf-movie-1/subtitles/0?token=..."
+            }
+        ],
+        "qualities": [
+            {"resolution": "1080p", "bitrate": 8000000, "url": "..."},
+            {"resolution": "720p", "bitrate": 4000000, "url": "..."}
+        ]
+    }
+end note
+
+React -> Player: loadSource(streamUrl)
+Player -> Player: Initialize HLS.js
+Player -> Proxy: GET /api/stream/jf-movie-1?token=...
+Proxy -> Proxy: verifyStreamToken(token)
+Proxy -> JellyfinAPI: GET /Videos/jf-movie-1/master.m3u8
+JellyfinAPI --> Proxy: HLS manifest
+Proxy --> Player: HLS manifest
+
+Player -> Player: Parse manifest
+Player -> Proxy: GET segment chunks
+Proxy -> JellyfinAPI: GET video segments
+JellyfinAPI --> Proxy: Video segments
+Proxy --> Player: Video segments
+
+Player --> User: Video playback starts
+
+== Update Watch Progress ==
+loop Every 10 seconds
+    Player -> React: onProgress(currentTime, duration)
+    React -> Gateway: PUT /api/user/watch-progress
+    note right
+        Input: {
+            "mediaId": "jf-movie-1",
+            "mediaType": "movie",
+            "progress": 1500,
+            "duration": 8160
+        }
+    end note
+    
+    Gateway -> Auth: Verify token
+    Gateway -> MediaCtrl: updateWatchProgress(req, res)
+    MediaCtrl -> DB: UPSERT INTO watch_history
+    note right
+        Input: {
+            "user_id": "uuid-123",
+            "media_id": "jf-movie-1",
+            "media_type": "movie",
+            "progress": 1500,
+            "duration": 8160,
+            "last_watched": "2025-01-15T10:25:00Z"
+        }
+    end note
+    
+    DB --> MediaCtrl: Updated
+    MediaCtrl --> Gateway: 200 OK
+    Gateway --> React: Success
+end
+
+@enduml
+
+@startuml Admin Panel Flow
+
+title Admin Panel - Jellyfin Configuration
+
+actor Admin
+participant "React App" as React
+participant "API Gateway" as Gateway
+participant "Auth Middleware" as Auth
+participant "Admin Controller" as AdminCtrl
+participant "Jellyfin Service" as JellyfinSvc
+participant "API Key Vault" as Vault
+participant "Jellyfin API" as JellyfinAPI
+participant "PostgreSQL" as DB
+
+== Connect Jellyfin Server ==
+Admin -> React: Enter Jellyfin credentials
+note right
+    Input: {
+        "serverUrl": "https://jellyfin.example.com",
+        "apiKey": "1234567890abcdef",
+        "userId": "jellyfin-admin-id"
+    }
+end note
+
+React -> Gateway: POST /api/admin/jellyfin/connect
+note right
+    Headers: {
+        "Authorization": "Bearer eyJhbGc..."
+    }
+end note
+
+Gateway -> Auth: Verify token
+Auth -> Auth: Check admin role
+Auth --> Gateway: Admin authenticated
+
+Gateway -> AdminCtrl: connectJellyfin(req, res)
+AdminCtrl -> JellyfinSvc: testConnection(serverUrl, apiKey)
+
+JellyfinSvc -> JellyfinAPI: GET /System/Info
+note right
+    Headers: {
+        "X-Emby-Token": "1234567890abcdef"
+    }
+end note
+
+JellyfinAPI --> JellyfinSvc: System info
+note right
+    Output: {
+        "ServerName": "My Jellyfin Server",
+        "Version": "10.8.13",
+        "Id": "server-uuid"
+    }
+end note
+
+JellyfinSvc --> AdminCtrl: Connection successful
+
+AdminCtrl -> Vault: encrypt(apiKey)
+Vault --> AdminCtrl: encryptedApiKey
+
+AdminCtrl -> DB: INSERT INTO jellyfin_config
+note right
+    Input: {
+        "server_url": "https://jellyfin.example.com",
+        "api_key_encrypted": "encrypted-key-data",
+        "user_id": "jellyfin-admin-id",
+        "is_active": true
+    }
+end note
+
+DB --> AdminCtrl: Config saved
+AdminCtrl --> Gateway: 200 OK
+Gateway --> React: Response
+note right
+    Output: {
+        "success": true,
+        "serverName": "My Jellyfin Server",
+        "version": "10.8.13",
+        "configId": "config-uuid-1"
+    }
+end note
+
+React --> Admin: Connection successful
+
+== Sync Libraries ==
+Admin -> React: Click "Sync Libraries"
+React -> Gateway: POST /api/admin/jellyfin/sync
+Gateway -> Auth: Verify admin
+Gateway -> AdminCtrl: syncLibraries(req, res)
+
+AdminCtrl -> JellyfinSvc: syncLibraries()
+JellyfinSvc -> DB: SELECT * FROM jellyfin_config WHERE is_active=true
+DB --> JellyfinSvc: Active config
+
+JellyfinSvc -> Vault: decrypt(apiKeyEncrypted)
+Vault --> JellyfinSvc: apiKey
+
+JellyfinSvc -> JellyfinAPI: GET /Library/VirtualFolders
+JellyfinAPI --> JellyfinSvc: Libraries list
+note right
+    Output: [
+        {
+            "Name": "Movies",
+            "ItemId": "lib-movies-1",
+            "CollectionType": "movies"
+        },
+        {
+            "Name": "TV Shows",
+            "ItemId": "lib-series-1",
+            "CollectionType": "tvshows"
+        }
+    ]
+end note
+
+loop For each library
+    JellyfinSvc -> JellyfinAPI: GET /Items?ParentId=lib-movies-1
+    JellyfinAPI --> JellyfinSvc: Library items
+    JellyfinSvc -> JellyfinSvc: Process and cache items
+end
+
+JellyfinSvc --> AdminCtrl: Sync complete
+AdminCtrl --> Gateway: 200 OK
+Gateway --> React: Response
+note right
+    Output: {
+        "success": true,
+        "librariesSynced": 2,
+        "itemsProcessed": 350,
+        "syncedAt": "2025-01-15T10:30:00Z"
+    }
+end note
+
+React --> Admin: Libraries synced successfully
+
+@enduml
