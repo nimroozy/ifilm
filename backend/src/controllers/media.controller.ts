@@ -777,12 +777,21 @@ export const proxyStream = async (req: Request, res: Response) => {
         // If this segment is from an HLS playlist and we have the playlistId, use the HLS playlist path
         if (isFromHlsPlaylist && hlsPlaylistId) {
           targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${filePath}?${segmentParams.toString()}`;
-          console.log('[proxyStream] Requesting segment from HLS playlist:', {
+          console.log('[proxyStream] ✅ Requesting segment from HLS playlist:', {
             playlistId: hlsPlaylistId,
             filePath,
             targetUrl,
+            isFromHlsPlaylist,
+            hasPlaylistId: !!hlsPlaylistId,
           });
         } else {
+          if (isFromHlsPlaylist && !hlsPlaylistId) {
+            console.warn('[proxyStream] ⚠️ Segment is from HLS playlist but no playlistId available:', {
+              filePath,
+              isFromHlsPlaylist,
+              hlsPlaylistId,
+            });
+          }
           targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${segmentParams.toString()}`;
         }
       } else {
@@ -824,8 +833,18 @@ export const proxyStream = async (req: Request, res: Response) => {
             timeout: 10000,
           });
           
-          // Extract playlistId from response
-          const playlistId = hlsCreateResponse.data?.PlaylistId || hlsCreateResponse.data?.Id;
+          console.log('[proxyStream] HLS create response:', {
+            status: hlsCreateResponse.status,
+            data: hlsCreateResponse.data,
+            headers: hlsCreateResponse.headers,
+          });
+          
+          // Extract playlistId from response - Jellyfin might return it in different formats
+          const playlistId = hlsCreateResponse.data?.PlaylistId || 
+                            hlsCreateResponse.data?.Id || 
+                            hlsCreateResponse.data?.playlistId ||
+                            hlsCreateResponse.data?.id;
+          
           if (playlistId) {
             // Store playlistId for URL rewriting
             hlsPlaylistId = playlistId;
@@ -835,10 +854,11 @@ export const proxyStream = async (req: Request, res: Response) => {
               playlistId,
               audioStreamIndex,
               targetUrl,
+              responseKeys: Object.keys(hlsCreateResponse.data || {}),
             });
           } else {
-            console.warn('[proxyStream] ⚠️ No playlistId in HLS create response, falling back to master.m3u8');
-            console.log('[proxyStream] HLS create response data:', JSON.stringify(hlsCreateResponse.data, null, 2));
+            console.error('[proxyStream] ❌ No playlistId in HLS create response, falling back to master.m3u8');
+            console.error('[proxyStream] Full HLS create response:', JSON.stringify(hlsCreateResponse.data, null, 2));
             targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
           }
         } catch (hlsError: any) {
