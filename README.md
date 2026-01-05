@@ -1,286 +1,201 @@
 # iFilm - Media Streaming Platform
 
-A modern, self-hosted media streaming platform built with React, Node.js, Express, and Jellyfin integration.
+A modern media streaming platform built with React, Node.js, and Jellyfin integration.
 
-## 🚀 Quick Start (One-Click Installation)
+## 🚀 One-Click Installation
 
-### Prerequisites
-- Ubuntu 20.04+ / Debian 11+ / CentOS 8+
-- Root or sudo access
-- At least 2GB RAM
-- Docker and Docker Compose installed
-
-### One-Click Installation (Fresh Ubuntu Server)
-
-**For Fresh Ubuntu Server (Recommended):**
+### Fresh Ubuntu Server Installation
 
 ```bash
-# Clone and install
-git clone https://github.com/nimroozy/ifilm.git
-cd ifilm
-chmod +x install-ubuntu.sh
-sudo ./install-ubuntu.sh
+curl -fsSL https://raw.githubusercontent.com/nimroozy/ifilm/main/install.sh | sudo bash
 ```
 
-**Alternative Installation Methods:**
-
-```bash
-# Method 1: Clone first (most reliable)
-git clone https://github.com/nimroozy/ifilm.git
-cd ifilm
-chmod +x install.sh
-sudo ./install.sh
-
-# Method 2: Direct download (if repository is public)
-wget https://raw.githubusercontent.com/nimroozy/ifilm/main/install-ubuntu.sh
-chmod +x install-ubuntu.sh
-sudo ./install-ubuntu.sh
-```
-
-> **Note:** `install-ubuntu.sh` is optimized for fresh Ubuntu installations and handles all prerequisites automatically.
-
-## 📋 Manual Installation
-
-### 1. Clone Repository
+Or clone and run:
 
 ```bash
 git clone https://github.com/nimroozy/ifilm.git
 cd ifilm
+sudo bash install.sh
 ```
 
-### 2. Install Dependencies
+### What gets installed:
 
-#### Backend
-```bash
-cd backend
-npm install
-```
+- ✅ Node.js, npm, pnpm
+- ✅ PostgreSQL database
+- ✅ Redis cache
+- ✅ NGINX web server
+- ✅ PM2 process manager
+- ✅ All dependencies
+- ✅ Database migrations
+- ✅ Frontend and backend builds
+- ✅ NGINX configuration
+- ✅ Cache directories
+- ✅ Sudoers configuration for NGINX
 
-#### Frontend
-```bash
-cd ../shadcn-ui
-npm install -g pnpm@8.10.0
-pnpm install
-```
+## 🔄 One-Click Update
 
-### 3. Configure Environment Variables
-
-#### Backend (.env)
-```bash
-cd backend
-cp .env.example .env
-# Edit .env with your settings
-```
-
-Required variables:
-- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-- `JWT_SECRET`, `JWT_REFRESH_SECRET`
-- `JELLYFIN_SERVER_URL`, `JELLYFIN_API_KEY`
-- `REDIS_HOST`, `REDIS_PORT`
-
-#### Frontend (.env)
-```bash
-cd shadcn-ui
-echo "VITE_API_URL=/api" > .env
-```
-
-### 4. Database Setup
+To update to the latest version:
 
 ```bash
-cd backend
-npm run migrate
+sudo /opt/ifilm/update.sh
 ```
 
-### 5. Build
-
-#### Backend
-```bash
-cd backend
-npm run build
-```
-
-#### Frontend
-```bash
-cd shadcn-ui
-pnpm run build
-```
-
-### 6. Start Services
-
-#### Using PM2 (Recommended)
-```bash
-# Backend
-cd backend
-pm2 start ecosystem.config.js --name ifilm-backend
-
-# Frontend (if using preview server)
-cd shadcn-ui
-pm2 start "pnpm run preview --host 0.0.0.0 --port 3000" --name ifilm-frontend
-```
-
-#### Using Docker Compose
-```bash
-docker-compose up -d
-```
-
-## 🐳 Docker Installation
-
-### Using Docker Compose
-
-1. **Create `.env` file**:
-```bash
-cat > .env << EOF
-DB_PASSWORD=your_secure_password
-JWT_SECRET=your_jwt_secret
-JWT_REFRESH_SECRET=your_refresh_secret
-ENCRYPTION_KEY=your_encryption_key
-CORS_ORIGIN=https://yourdomain.com
-VITE_API_URL=/api
-EOF
-```
-
-2. **Start services**:
-```bash
-docker-compose up -d
-```
-
-3. **Check logs**:
-```bash
-docker-compose logs -f
-```
-
-## 🔧 Configuration
-
-### Jellyfin Integration
-
-1. Access your Jellyfin server admin panel
-2. Go to **Settings → API Keys**
-3. Create a new API key
-4. Update `backend/.env`:
-   ```
-   JELLYFIN_SERVER_URL=http://your-jellyfin-server:8096
-   JELLYFIN_API_KEY=your_api_key_here
-   ```
-
-### NGINX Reverse Proxy (Production)
-
-NGINX is automatically configured during installation to serve on port 80.
-
-**Manual Setup (if needed):**
+Or manually:
 
 ```bash
 cd /opt/ifilm
-sudo ./setup-nginx.sh
+sudo bash update.sh
 ```
 
-**Or manually:**
+## 📋 Post-Installation Setup
 
-```bash
-# Copy NGINX config
-sudo cp nginx/ifilm.conf /etc/nginx/sites-available/ifilm
-sudo ln -s /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default  # Remove default site
+After installation, access the admin panel:
 
-# Test and restart
-sudo nginx -t
-sudo systemctl restart nginx
-```
+1. **Configure Jellyfin Server:**
+   - Go to: `http://YOUR_SERVER_IP/admin/jellyfin-settings`
+   - Enter your Jellyfin server URL and API key
+   - Test connection and save
 
-After setup, access your application at `http://YOUR_SERVER_IP` (port 80).
+2. **Configure Cache Settings:**
+   - Go to: `http://YOUR_SERVER_IP/admin/cache-settings`
+   - Set cache sizes based on your server's HDD capacity
+   - Click "Reload NGINX Config" to apply
 
-**NGINX Configuration Features:**
-- ✅ Serves frontend on port 80
-- ✅ Proxies `/api` requests to backend (port 5000)
-- ✅ Gzip compression enabled
-- ✅ Security headers configured
-- ✅ Static asset caching
-- ✅ Streaming support (no buffering for HLS)
+3. **Access Your Site:**
+   - Frontend: `http://YOUR_SERVER_IP`
+   - Admin Panel: `http://YOUR_SERVER_IP/admin/dashboard`
+
+## 🛠️ Manual Installation Steps
+
+If you prefer manual installation:
+
+### Prerequisites
+
+- Ubuntu 20.04+ or Debian 11+
+- Root or sudo access
+- At least 2GB RAM
+- 20GB+ disk space
+
+### Step-by-Step
+
+1. **Clone Repository:**
+   ```bash
+   git clone https://github.com/nimroozy/ifilm.git
+   cd ifilm
+   ```
+
+2. **Run Installation Script:**
+   ```bash
+   sudo bash install.sh
+   ```
+
+3. **Configure Environment:**
+   - Edit `/opt/ifilm/backend/.env` with your database credentials
+   - Default database: `ifilm`, user: `ifilm`, password: `ifilm123`
+
+4. **Access Admin Panel:**
+   - Navigate to `http://YOUR_SERVER_IP/admin`
+   - Configure Jellyfin and cache settings
 
 ## 📁 Project Structure
 
 ```
 ifilm/
-├── backend/           # Node.js/Express backend API
-│   ├── src/
-│   │   ├── controllers/
-│   │   ├── services/
-│   │   ├── routes/
-│   │   └── server.ts
-│   └── migrations/    # Database migrations
-├── shadcn-ui/         # React frontend
-│   ├── src/
-│   │   ├── pages/
-│   │   ├── components/
-│   │   └── services/
-│   └── public/
-└── docker-compose.yml # Docker configuration
+├── backend/          # Node.js/Express backend
+├── shadcn-ui/        # React frontend
+├── nginx/            # NGINX configuration
+├── install.sh        # One-click installation script
+└── update.sh         # One-click update script
 ```
 
-## 🛠️ Development
+## 🔧 Configuration
 
-### Backend Development
-```bash
-cd backend
-npm run dev
-```
+### Database
 
-### Frontend Development
-```bash
-cd shadcn-ui
-pnpm run dev
-```
+Default PostgreSQL setup:
+- Database: `ifilm`
+- User: `ifilm`
+- Password: `ifilm123`
 
-## 🔐 Security Features
+Change in `/opt/ifilm/backend/.env` and update PostgreSQL accordingly.
 
-- JWT authentication with refresh tokens
-- Password encryption with bcrypt
-- CORS protection
-- Rate limiting
-- Helmet security headers
-- SQL injection prevention
-- XSS protection
+### NGINX Cache
 
-## 📝 API Documentation
+Configure cache sizes in admin panel:
+- Images cache: Default 5GB
+- Videos cache: Default 50GB
+- Adjust based on your server's HDD capacity
 
-API endpoints are available at `/api`:
+### PM2 Processes
 
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User login
-- `GET /api/media/movies` - Get movies list
-- `GET /api/media/series` - Get series list
-- `GET /api/media/stream/:id` - Stream media
+- `ifilm-backend`: Backend API server (port 5000)
+- `ifilm-frontend`: Frontend preview server (port 3000)
 
 ## 🐛 Troubleshooting
 
-### Backend won't start
-- Check database connection in `.env`
-- Verify Jellyfin server is accessible
-- Check Redis connection
+### Services not starting
 
-### Frontend images not loading
-- Ensure backend returns relative URLs (`/api/...`)
-- Check CORS configuration
-- Verify NGINX proxy settings
+```bash
+# Check PM2 status
+pm2 status
 
-### Build fails
-- Clear `node_modules` and reinstall
-- Check Node.js version (v18+)
-- Verify all environment variables are set
+# Check logs
+pm2 logs ifilm-backend
+pm2 logs ifilm-frontend
+
+# Restart services
+pm2 restart all
+```
+
+### NGINX issues
+
+```bash
+# Test configuration
+sudo nginx -t
+
+# Check error logs
+sudo tail -f /var/log/nginx/error.log
+
+# Reload NGINX
+sudo systemctl reload nginx
+```
+
+### Database connection issues
+
+```bash
+# Check PostgreSQL status
+sudo systemctl status postgresql
+
+# Test connection
+sudo -u postgres psql -d ifilm
+```
+
+## 📝 Features
+
+- 🎬 Movie and TV series streaming
+- 🖼️ Image and video caching with NGINX
+- 👥 User management
+- 📊 Admin dashboard
+- 🔍 Search functionality
+- ⭐ Favorites and watch history
+- 📱 Responsive design
+
+## 🔐 Security
+
+- JWT authentication
+- Role-based access control (Admin/User)
+- Secure API endpoints
+- NGINX security headers
+- Input validation
 
 ## 📄 License
 
-MIT License - see LICENSE file for details
+[Your License Here]
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+[Contributing Guidelines]
 
-## 📧 Support
+## 📞 Support
 
-For issues and questions, please open an issue on GitHub.
-
-## 🙏 Acknowledgments
-
-- Jellyfin for media server capabilities
-- React & Vite for frontend framework
-- Express.js for backend framework
+[Support Information]

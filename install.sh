@@ -1,279 +1,205 @@
 #!/bin/bash
 
+# One-Click Install Script for iFilm
+# This script installs everything needed for a fresh Ubuntu server
+
 set -e
 
-echo "🚀 iFilm Installation Script"
-echo "=============================="
+echo "🚀 iFilm One-Click Installation"
+echo "=================================="
 echo ""
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
-    echo -e "${YELLOW}Warning: Not running as root. Some commands may require sudo.${NC}"
-fi
-
-# Detect OS
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    OS=$ID
-    VER=$VERSION_ID
-else
-    echo -e "${RED}Cannot detect OS. Please install manually.${NC}"
+    echo "❌ Please run as root: sudo bash install.sh"
     exit 1
 fi
 
-echo "Detected OS: $OS $VER"
+# Update system
+echo "1️⃣ Updating system packages..."
+apt-get update -qq
+apt-get upgrade -y -qq
+
+# Install required packages
 echo ""
-
-# Function to check command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-# Install Node.js if not present
-if ! command_exists node; then
-    echo "📦 Installing Node.js..."
-    if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
-        curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-        apt-get install -y nodejs
-    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
-        curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
-        yum install -y nodejs
-    else
-        echo -e "${RED}Unsupported OS. Please install Node.js manually.${NC}"
-        exit 1
-    fi
-fi
+echo "2️⃣ Installing required packages..."
+apt-get install -y -qq \
+    curl \
+    git \
+    build-essential \
+    postgresql \
+    postgresql-contrib \
+    redis-server \
+    nginx \
+    nodejs \
+    npm \
+    pm2 \
+    sudo \
+    wget \
+    ca-certificates
 
 # Install pnpm
-if ! command_exists pnpm; then
-    echo "📦 Installing pnpm..."
-    npm install -g pnpm@8.10.0
-fi
-
-# Install PM2
-if ! command_exists pm2; then
-    echo "📦 Installing PM2..."
-    npm install -g pm2
-fi
-
-# Install Docker if not present
-if ! command_exists docker; then
-    echo "📦 Installing Docker..."
-    if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
-        apt-get update
-        apt-get install -y docker.io docker-compose
-    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
-        yum install -y docker docker-compose
-        systemctl start docker
-        systemctl enable docker
-    fi
-fi
-
-# Install PostgreSQL if not present
-if ! command_exists psql; then
-    echo "📦 Installing PostgreSQL..."
-    if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
-        apt-get install -y postgresql postgresql-contrib
-    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
-        yum install -y postgresql-server postgresql-contrib
-        postgresql-setup --initdb
-        systemctl start postgresql
-        systemctl enable postgresql
-    fi
-fi
-
-# Install Redis if not present
-if ! command_exists redis-cli; then
-    echo "📦 Installing Redis..."
-    if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
-        apt-get install -y redis-server
-    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
-        yum install -y redis
-        systemctl start redis
-        systemctl enable redis
-    fi
-fi
-
 echo ""
-echo -e "${GREEN}✅ Prerequisites installed!${NC}"
+echo "3️⃣ Installing pnpm..."
+npm install -g pnpm
+
+# Create application directory
 echo ""
+echo "4️⃣ Setting up application directory..."
+mkdir -p /opt/ifilm
+cd /opt/ifilm
 
-# Get installation directory
-INSTALL_DIR="/opt/ifilm"
-if [ -d "$INSTALL_DIR" ]; then
-    echo -e "${YELLOW}Directory $INSTALL_DIR already exists.${NC}"
-    read -p "Remove and reinstall? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf "$INSTALL_DIR"
-    else
-        echo "Installation cancelled."
-        exit 1
-    fi
-fi
-
-# Clone or copy repository
+# Clone repository
+echo ""
+echo "5️⃣ Cloning repository from GitHub..."
 if [ -d ".git" ]; then
-    echo "📥 Copying current directory to $INSTALL_DIR..."
-    mkdir -p "$INSTALL_DIR"
-    cp -r . "$INSTALL_DIR"/
-    cd "$INSTALL_DIR"
+    echo "Repository already exists, pulling latest..."
+    git pull
 else
-    echo "📥 Cloning repository..."
-    git clone https://github.com/nimroozy/ifilm.git "$INSTALL_DIR"
-    cd "$INSTALL_DIR"
+    git clone https://github.com/nimroozy/ifilm.git .
 fi
+
+# Setup PostgreSQL
+echo ""
+echo "6️⃣ Setting up PostgreSQL..."
+sudo -u postgres psql -c "CREATE DATABASE ifilm;" 2>/dev/null || echo "Database already exists"
+sudo -u postgres psql -c "CREATE USER ifilm WITH PASSWORD 'ifilm123';" 2>/dev/null || echo "User already exists"
+sudo -u postgres psql -c "ALTER USER ifilm CREATEDB;" 2>/dev/null || true
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ifilm TO ifilm;" 2>/dev/null || true
 
 # Setup backend
 echo ""
-echo "🔧 Setting up backend..."
-cd backend
-
-# Clean up any duplicate files that might cause build errors
-echo "🧹 Cleaning up duplicate files..."
-rm -f src/admin.controller.ts src/admin.routes.ts src/jellyfin.service.ts src/jellyfin-libraries.service.ts src/media.controller.ts 2>/dev/null || true
-
-# Install dependencies
+echo "7️⃣ Setting up backend..."
+cd /opt/ifilm/backend
 npm install
-
-# Create .env if not exists
-if [ ! -f .env ]; then
-    echo "📝 Creating backend .env file..."
-    cat > .env << EOF
-NODE_ENV=production
-PORT=5000
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=ifilm
-DB_USER=postgres
-DB_PASSWORD=change_this_password
-REDIS_HOST=localhost
-REDIS_PORT=6379
-JWT_SECRET=$(openssl rand -hex 32)
-JWT_REFRESH_SECRET=$(openssl rand -hex 32)
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-CORS_ORIGIN=http://localhost:3000
-JELLYFIN_SERVER_URL=http://localhost:8096
-JELLYFIN_API_KEY=your_jellyfin_api_key_here
-EOF
-    echo -e "${YELLOW}⚠️  Please edit backend/.env with your actual configuration!${NC}"
-fi
-
-# Build backend
 npm run build
 
-# Setup database
-echo "🗄️  Setting up database..."
-sudo -u postgres createdb ifilm 2>/dev/null || echo "Database may already exist"
-
-# Run migrations if script exists
-if [ -f "scripts/migrate.js" ]; then
-    echo "🔄 Running database migrations..."
-    npm run migrate || echo "Migrations may have already run"
-else
-    echo "⚠️  Migration script not found. Skipping migrations."
-    echo "   You may need to run migrations manually later."
-fi
-
-cd ..
+# Run migrations
+echo ""
+echo "8️⃣ Running database migrations..."
+npm run migrate
 
 # Setup frontend
 echo ""
-echo "🔧 Setting up frontend..."
-cd shadcn-ui
-
-# Install dependencies
+echo "9️⃣ Setting up frontend..."
+cd /opt/ifilm/shadcn-ui
 pnpm install
-
-# Create .env
-echo "VITE_API_URL=/api" > .env
-
-# Build frontend
 pnpm run build
 
-cd ..
+# Configure NGINX
+echo ""
+echo "🔟 Configuring NGINX..."
+cp /opt/ifilm/nginx/ifilm.conf /etc/nginx/sites-available/ifilm
+ln -sf /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+
+# Create cache directories
+mkdir -p /var/cache/nginx/images
+mkdir -p /var/cache/nginx/videos
+chown -R www-data:www-data /var/cache/nginx
+chmod -R 755 /var/cache/nginx
+
+# Update NGINX cache config from database
+/opt/ifilm/backend/scripts/update-nginx-cache.sh || echo "Cache config update skipped (will be applied after first config)"
+
+# Test NGINX config
+nginx -t
+
+# Configure sudoers for NGINX commands (for root user)
+echo ""
+echo "1️⃣1️⃣ Configuring sudoers..."
+SUDOERS_LINE="root ALL=(ALL) NOPASSWD: /usr/sbin/nginx, /bin/systemctl reload nginx, /bin/systemctl reload nginx.service"
+if ! grep -q "NOPASSWD.*nginx" /etc/sudoers 2>/dev/null; then
+    echo "$SUDOERS_LINE" >> /etc/sudoers
+    echo "✅ Sudoers configured"
+else
+    echo "✅ Sudoers already configured"
+fi
+
+# Setup PM2
+echo ""
+echo "1️⃣2️⃣ Setting up PM2 processes..."
+cd /opt/ifilm
+
+# Create ecosystem config if it doesn't exist
+if [ ! -f "ecosystem.config.js" ]; then
+    cat > ecosystem.config.js << 'EOF'
+module.exports = {
+  apps: [
+    {
+      name: 'ifilm-backend',
+      script: './backend/dist/server.js',
+      cwd: '/opt/ifilm',
+      instances: 1,
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 5000,
+      },
+      error_file: './backend/logs/backend-error.log',
+      out_file: './backend/logs/backend-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+      autorestart: true,
+      max_memory_restart: '500M',
+    },
+    {
+      name: 'ifilm-frontend',
+      script: 'pnpm',
+      args: 'run preview',
+      cwd: '/opt/ifilm/shadcn-ui',
+      instances: 1,
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3000,
+      },
+      autorestart: true,
+      max_memory_restart: '300M',
+    },
+  ],
+};
+EOF
+fi
 
 # Start services with PM2
-echo ""
-echo "🚀 Starting services with PM2..."
-
-# Start backend
-cd backend
-# Create logs directory
-mkdir -p logs
-
-# Start with PM2 using the ecosystem config from parent directory
-cd ..
-if [ -f "ecosystem.config.js" ]; then
-    PM2_CWD="$(pwd)/backend" pm2 start ecosystem.config.js --name ifilm-backend || pm2 restart ifilm-backend
-else
-    # Fallback: start directly
-    cd backend
-    pm2 start dist/server.js --name ifilm-backend || pm2 restart ifilm-backend
-    cd ..
-fi
-
-# Start frontend preview server
-cd shadcn-ui
-pm2 start "pnpm run preview --host 0.0.0.0 --port 3000" --name ifilm-frontend || pm2 restart ifilm-frontend
-cd ..
-
-# Save PM2 configuration
+pm2 delete ifilm-backend 2>/dev/null || true
+pm2 delete ifilm-frontend 2>/dev/null || true
+pm2 start ecosystem.config.js
 pm2 save
+pm2 startup systemd -u root --hp /root || true
 
-# Setup PM2 startup script
-pm2 startup | tail -1 | bash || echo "PM2 startup already configured"
+# Start services
+echo ""
+echo "1️⃣3️⃣ Starting services..."
+systemctl restart nginx
+systemctl enable nginx
+systemctl enable redis-server
+systemctl enable postgresql
 
-# Setup NGINX reverse proxy (if on Ubuntu/Debian)
+# Create update script
 echo ""
-echo "🔧 Setting up NGINX reverse proxy..."
-if command -v nginx &> /dev/null || ([ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]); then
-    if ! command -v nginx &> /dev/null; then
-        echo "Installing NGINX..."
-        apt-get install -y nginx 2>/dev/null || echo "Could not install NGINX automatically"
-    fi
-    
-    if command -v nginx &> /dev/null && [ -f "nginx/ifilm.conf" ]; then
-        cp nginx/ifilm.conf /etc/nginx/sites-available/ifilm 2>/dev/null || echo "Could not copy NGINX config"
-        if [ ! -L /etc/nginx/sites-enabled/ifilm ]; then
-            ln -s /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/ 2>/dev/null || echo "Could not enable NGINX site"
-        fi
-        if nginx -t 2>/dev/null; then
-            systemctl restart nginx 2>/dev/null || echo "Could not restart NGINX"
-            echo "✅ NGINX configured"
-        fi
-    fi
-fi
+echo "1️⃣4️⃣ Creating update script..."
+cat > /opt/ifilm/update.sh << 'EOF'
+#!/bin/bash
+set -e
+cd /opt/ifilm
+git pull
+cd backend && npm install && npm run build && npm run migrate
+cd ../shadcn-ui && pnpm install && pnpm run build
+pm2 restart all
+sudo /opt/ifilm/backend/scripts/update-nginx-cache.sh 2>/dev/null || true
+sudo systemctl reload nginx
+echo "✅ Update complete!"
+EOF
+chmod +x /opt/ifilm/update.sh
 
 echo ""
-echo -e "${GREEN}✅ Installation complete!${NC}"
+echo "✅ Installation complete!"
 echo ""
-SERVER_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
-NGINX_ENABLED=$(systemctl is-active nginx 2>/dev/null || echo "inactive")
-
-echo "📋 Next steps:"
-echo "1. Edit backend/.env with your Jellyfin configuration"
-if [ "$NGINX_ENABLED" != "active" ]; then
-    echo "2. Set up NGINX: cd $INSTALL_DIR && sudo ./setup-nginx.sh"
-    echo "3. Access frontend at http://$SERVER_IP:3000"
-else
-    echo "2. Access frontend at http://$SERVER_IP (Port 80)"
-fi
-echo "4. Access backend API at http://localhost:5000/api"
+echo "📝 Next steps:"
+echo "   1. Configure Jellyfin: http://$(hostname -I | awk '{print $1}')/admin/jellyfin-settings"
+echo "   2. Configure cache: http://$(hostname -I | awk '{print $1}')/admin/cache-settings"
+echo "   3. Access your site: http://$(hostname -I | awk '{print $1}')"
 echo ""
-echo "📊 PM2 Status:"
-pm2 list
-echo ""
-echo "📝 Useful commands:"
-echo "  pm2 logs ifilm-backend    # View backend logs"
-echo "  pm2 logs ifilm-frontend   # View frontend logs"
-echo "  pm2 restart all           # Restart all services"
-echo "  pm2 stop all              # Stop all services"
-echo ""
-
+echo "🔄 To update: sudo /opt/ifilm/update.sh"
