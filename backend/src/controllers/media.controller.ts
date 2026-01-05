@@ -1074,10 +1074,27 @@ export const proxyStream = async (req: Request, res: Response) => {
           }
           
           // If it's a relative path (like hls1/main/0.ts or main.m3u8), prepend our proxy base
-          // When using HLS playlist, segments are relative to the playlist, so we need to preserve that structure
+          // IMPORTANT: For variant playlists (main.m3u8), we need to add AudioStreamIndex if specified
           if (!urlPath.startsWith('http') && !urlPath.startsWith('/')) {
-            // If we're using an HLS playlist, the segments should be requested from the HLS playlist path
-            // But since we're proxying, we can just use the relative path - our proxy will handle it
+            // If this is a variant playlist (main.m3u8) and we have an audio track selected,
+            // add AudioStreamIndex to the variant playlist URL so segments use the correct audio
+            if (urlPath === 'main.m3u8' && audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
+              const variantParams = new URLSearchParams(existingQueryString);
+              variantParams.set('AudioStreamIndex', String(audioStreamIndex));
+              if (mediaSourceId) {
+                variantParams.set('MediaSourceId', mediaSourceId);
+              }
+              // Preserve audioTrack and mediaSourceId for our tracking
+              if (audioTrackIndex !== null) {
+                variantParams.set('audioTrack', String(audioTrackIndex));
+              }
+              if (mediaSourceId) {
+                variantParams.set('mediaSourceId', mediaSourceId);
+              }
+              const variantQueryString = variantParams.toString();
+              return `${proxyBase}/${urlPath}?${variantQueryString}`;
+            }
+            // For segments, the AudioStreamIndex will be added when they're requested
             return finalQueryString ? `${proxyBase}/${urlPath}?${finalQueryString}` : `${proxyBase}/${urlPath}`;
           }
           
