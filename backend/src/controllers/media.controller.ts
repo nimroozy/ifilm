@@ -477,7 +477,16 @@ export const proxyStream = async (req: Request, res: Response) => {
       });
     }
     
-    console.log('[proxyStream] Parsed:', { id, filePath, fullPath, path: req.path, url: req.url });
+    console.log('[proxyStream] Parsed:', { 
+      id, 
+      filePath, 
+      fullPath, 
+      path: req.path, 
+      url: req.url,
+      query: req.query,
+      audioTrack: req.query.audioTrack,
+      mediaSourceId: req.query.mediaSourceId,
+    });
     
     if (!jellyfinService.isInitialized()) {
       const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
