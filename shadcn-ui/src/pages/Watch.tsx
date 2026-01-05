@@ -178,19 +178,26 @@ export default function Watch() {
       
       // If audio track is specified, append it to the stream URL
       // IMPORTANT: Pass the track's 'index' property (Jellyfin MediaStream Index), not the array index
+      // For seamless audio track switching, always load master playlist WITHOUT audioTrack parameter
+      // This allows HLS.js to detect all audio tracks from the manifest
+      // We'll switch tracks using HLS.js's audioTrack property instead of reloading
       let finalStreamUrl = streamUrlValue;
-      if (audioTrackIndex !== undefined && audioTrackIndex !== null && tracks.length > 0) {
+      
+      // Don't add audioTrack to URL if we're just loading the stream (skipReload = true)
+      // This ensures we get all audio tracks in the manifest for seamless switching
+      if (!skipReload && audioTrackIndex !== undefined && audioTrackIndex !== null && tracks.length > 0) {
         const selectedTrack = tracks[audioTrackIndex];
         if (selectedTrack) {
+          // Only add audioTrack if we're explicitly reloading with a specific track
+          // For seamless switching, we'll use HLS.js's audioTrack property instead
           const url = new URL(streamUrlValue, window.location.origin);
-          // Use the track's 'index' property (Jellyfin MediaStream Index), not the array index
           url.searchParams.set('audioTrack', selectedTrack.index.toString());
           if (selectedTrack.mediaSourceId) {
             url.searchParams.set('mediaSourceId', selectedTrack.mediaSourceId);
           }
           finalStreamUrl = url.pathname + url.search;
           setSelectedAudioTrack(audioTrackIndex);
-          console.log('[Watch] Setting audio track:', {
+          console.log('[Watch] Setting audio track (will reload):', {
             arrayIndex: audioTrackIndex,
             jellyfinIndex: selectedTrack.index,
             track: selectedTrack.name,
@@ -886,47 +893,53 @@ export default function Watch() {
                                   const currentTime = videoRef.current?.currentTime || 0;
                                   
                                   // Switch audio track on existing HLS instance without reloading
+                                  // Try to map our backend audio track to HLS.js audio track by language/codec
                                   if (hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 0) {
                                     try {
-                                      // Find the matching audio track in HLS
-                                      const hlsTrackIndex = Math.min(index, hlsRef.current.audioTracks.length - 1);
+                                      // Find matching HLS audio track by language and codec
+                                      let hlsTrackIndex = -1;
+                                      const trackLang = track.language.toLowerCase();
+                                      const trackCodec = track.codec.toLowerCase();
                                       
-                                      // Pause video temporarily to prevent issues during switch
-                                      if (videoRef.current && wasPlaying) {
-                                        videoRef.current.pause();
+                                      // First, try to find exact match by language
+                                      for (let i = 0; i < hlsRef.current.audioTracks.length; i++) {
+                                        const hlsTrack = hlsRef.current.audioTracks[i];
+                                        const hlsLang = (hlsTrack.lang || '').toLowerCase();
+                                        const hlsName = (hlsTrack.name || '').toLowerCase();
+                                        
+                                        // Match by language code (e.g., 'eng', 'fas')
+                                        if (hlsLang === trackLang || hlsLang.startsWith(trackLang) || trackLang.startsWith(hlsLang)) {
+                                          hlsTrackIndex = i;
+                                          break;
+                                        }
+                                        // Also try matching by name if it contains the language
+                                        if (hlsName.includes(trackLang) || hlsName.includes(track.name.toLowerCase())) {
+                                          hlsTrackIndex = i;
+                                          break;
+                                        }
                                       }
                                       
-                                      // Switch audio track
+                                      // Fallback to array index if no match found
+                                      if (hlsTrackIndex === -1) {
+                                        hlsTrackIndex = Math.min(index, hlsRef.current.audioTracks.length - 1);
+                                        console.warn('[Watch] No language match found, using array index:', hlsTrackIndex);
+                                      }
+                                      
+                                      // Switch audio track WITHOUT pausing or reloading
                                       hlsRef.current.audioTrack = hlsTrackIndex;
                                       setSelectedAudioTrack(index);
                                       
-                                      console.log('[Watch] Switched to audio track:', hlsTrackIndex, hlsRef.current.audioTracks[hlsTrackIndex]);
-                                      
-                                      // Restore playback state after a brief delay
-                                      if (videoRef.current) {
-                                        // Ensure video time is preserved
-                                        videoRef.current.currentTime = currentTime;
-                                        
-                                        // Resume playback if it was playing
-                                        if (wasPlaying) {
-                                          setTimeout(() => {
-                                            if (videoRef.current) {
-                                              videoRef.current.play().catch(err => {
-                                                console.error('[Watch] Failed to resume playback:', err);
-                                              });
-                                            }
-                                          }, 100);
-                                        }
-                                      }
+                                      console.log('[Watch] ✅ Switched to audio track seamlessly:', {
+                                        backendIndex: index,
+                                        hlsIndex: hlsTrackIndex,
+                                        track: track.name,
+                                        hlsTrack: hlsRef.current.audioTracks[hlsTrackIndex],
+                                      });
                                       
                                       toast.success(`Switched to ${track.name}`);
                                     } catch (error) {
                                       console.error('[Watch] Failed to switch audio track:', error);
                                       toast.error('Failed to switch audio track');
-                                      // Try to resume if it was playing
-                                      if (videoRef.current && wasPlaying) {
-                                        videoRef.current.play().catch(() => {});
-                                      }
                                     }
                                   } else if (videoRef.current && videoRef.current.audioTracks && videoRef.current.audioTracks.length > 0) {
                                     // Native HLS (Safari)

@@ -869,74 +869,19 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
     } else {
       // Master playlist
-      // For Jellyfin HLS with audio track selection, try using /hls endpoint first
-      // If that fails, fall back to using AudioStreamIndex directly on master.m3u8
+      // IMPORTANT: Always request master.m3u8 WITHOUT AudioStreamIndex to get all audio tracks
+      // This allows HLS.js to detect all available audio tracks and switch between them seamlessly
+      // Only add AudioStreamIndex if explicitly requested AND we want to force a specific track
+      // For seamless switching, we want the master playlist to include all tracks
       if (audioStreamIndex !== null && mediaSourceId) {
-        try {
-          // First, try creating an HLS playlist with the audio track using POST
-          const hlsCreateUrl = `${serverUrl}/Videos/${id}/hls`;
-          const hlsCreateBody = {
-            MediaSourceId: mediaSourceId,
-            AudioStreamIndex: audioStreamIndex,
-            SubtitleStreamIndex: null,
-            VideoStreamIndex: null,
-          };
-          
-          console.log('[proxyStream] Creating HLS playlist with audio track:', {
-            url: hlsCreateUrl,
-            body: hlsCreateBody,
-          });
-          
-          const hlsCreateResponse = await axios.post(hlsCreateUrl, hlsCreateBody, {
-            headers: {
-              'X-Emby-Token': userToken,
-              'Content-Type': 'application/json',
-            },
-            timeout: 10000,
-          });
-          
-          console.log('[proxyStream] HLS create response:', {
-            status: hlsCreateResponse.status,
-            data: hlsCreateResponse.data,
-            headers: hlsCreateResponse.headers,
-          });
-          
-          // Extract playlistId from response - Jellyfin might return it in different formats
-          const playlistId = hlsCreateResponse.data?.PlaylistId || 
-                            hlsCreateResponse.data?.Id || 
-                            hlsCreateResponse.data?.playlistId ||
-                            hlsCreateResponse.data?.id;
-          
-          if (playlistId) {
-            // Store playlistId for URL rewriting
-            hlsPlaylistId = playlistId;
-            // Use the generated playlist
-            targetUrl = `${serverUrl}/Videos/${id}/hls/${playlistId}/stream.m3u8?${urlParams.toString()}`;
-            console.log('[proxyStream] ✅ Created HLS playlist with audio track:', {
-              playlistId,
-              audioStreamIndex,
-              targetUrl,
-              responseKeys: Object.keys(hlsCreateResponse.data || {}),
-            });
-          } else {
-            console.warn('[proxyStream] ⚠️ No playlistId in HLS create response, using AudioStreamIndex on master.m3u8');
-            console.warn('[proxyStream] HLS create response data:', JSON.stringify(hlsCreateResponse.data, null, 2));
-            // Fallback: Use AudioStreamIndex directly on master.m3u8
-            targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
-          }
-        } catch (hlsError: any) {
-          console.warn('[proxyStream] ⚠️ Failed to create HLS playlist, using AudioStreamIndex on master.m3u8:', {
-            error: hlsError.message,
-            status: hlsError.response?.status,
-            data: hlsError.response?.data,
-          });
-          // Fallback: Use AudioStreamIndex directly on master.m3u8
-          // Jellyfin might support AudioStreamIndex on master.m3u8 in some versions
-          targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
-        }
-      } else {
-        targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
+        // If audio track is specified, we can optionally add it, but for seamless switching,
+        // it's better to let HLS.js handle it from the manifest
+        // We'll add it as a query param but not force it, so the manifest includes all tracks
+        console.log('[proxyStream] Master playlist requested with audio track, but will include all tracks for seamless switching');
       }
+      // Always request master.m3u8 without AudioStreamIndex to get all audio tracks in manifest
+      targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
+      console.log('[proxyStream] Requesting master playlist with all audio tracks for seamless switching');
     }
 
     console.log('[proxyStream] Proxying request to Jellyfin:', targetUrl);
