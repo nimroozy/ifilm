@@ -587,20 +587,23 @@ export const proxyStream = async (req: Request, res: Response) => {
             console.log('[proxyStream] Got media source ID:', mediaSourceId);
           }
           
-          // If audioTrackIndex is specified, find the corresponding MediaStream Index
+          // If audioTrackIndex is specified, use it directly as Jellyfin MediaStream Index
+          // The frontend now passes the track's 'index' property (Jellyfin MediaStream Index), not array index
           if (audioTrackIndex !== null && selectedMediaSource.MediaStreams) {
             const audioStreams = selectedMediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
-            if (audioStreams.length > 0 && audioTrackIndex >= 0 && audioTrackIndex < audioStreams.length) {
-              // Use the Index from the MediaStream (this is what Jellyfin expects)
-              audioStreamIndex = audioStreams[audioTrackIndex].Index;
+            // Check if the requested index exists in the audio streams
+            const matchingStream = audioStreams.find((stream: any) => stream.Index === audioTrackIndex);
+            if (matchingStream) {
+              // Use the Index directly (frontend already passed the correct Jellyfin MediaStream Index)
+              audioStreamIndex = audioTrackIndex;
               console.log('[proxyStream] Audio track requested:', {
-                frontendIndex: audioTrackIndex,
                 jellyfinIndex: audioStreamIndex,
-                language: audioStreams[audioTrackIndex].Language || audioStreams[audioTrackIndex].LanguageTag,
-                codec: audioStreams[audioTrackIndex].Codec,
+                language: matchingStream.Language || matchingStream.LanguageTag,
+                codec: matchingStream.Codec,
+                name: matchingStream.DisplayTitle || matchingStream.Title,
               });
             } else {
-              console.warn('[proxyStream] Invalid audioTrackIndex:', audioTrackIndex, 'Available tracks:', audioStreams.length);
+              console.warn('[proxyStream] AudioStreamIndex not found:', audioTrackIndex, 'Available indices:', audioStreams.map((s: any) => s.Index).join(', '));
             }
           }
         }

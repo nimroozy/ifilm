@@ -177,17 +177,24 @@ export default function Watch() {
       setCurrentMediaSourceId(mediaSourceId || defaultMediaSourceId);
       
       // If audio track is specified, append it to the stream URL
+      // IMPORTANT: Pass the track's 'index' property (Jellyfin MediaStream Index), not the array index
       let finalStreamUrl = streamUrlValue;
       if (audioTrackIndex !== undefined && audioTrackIndex !== null && tracks.length > 0) {
         const selectedTrack = tracks[audioTrackIndex];
         if (selectedTrack) {
           const url = new URL(streamUrlValue, window.location.origin);
-          url.searchParams.set('audioTrack', audioTrackIndex.toString());
+          // Use the track's 'index' property (Jellyfin MediaStream Index), not the array index
+          url.searchParams.set('audioTrack', selectedTrack.index.toString());
           if (selectedTrack.mediaSourceId) {
             url.searchParams.set('mediaSourceId', selectedTrack.mediaSourceId);
           }
           finalStreamUrl = url.pathname + url.search;
           setSelectedAudioTrack(audioTrackIndex);
+          console.log('[Watch] Setting audio track:', {
+            arrayIndex: audioTrackIndex,
+            jellyfinIndex: selectedTrack.index,
+            track: selectedTrack.name,
+          });
         }
       } else if (tracks.length > 0) {
         // Select first track by default
