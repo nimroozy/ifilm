@@ -326,33 +326,34 @@ export const proxyStream = async (req: Request, res: Response) => {
     // So /api/media/stream/id/master.m3u8 becomes /stream/id/master.m3u8 in req.path
     // But req.url contains the full path, so we can use either
     
-    // Extract id and filePath from req.path
-    // When mounted at /api/media, req.path is relative to the mount point
-    // So /api/media/stream/id/master.m3u8 becomes /stream/id/master.m3u8 in req.path
-    const streamPathMatch = req.path.match(/^\/stream\/(.+)$/);
+    // Extract id and filePath from route params
+    // Using wildcard route /stream/:id(*) captures everything after /stream/ in req.params.id
+    // For /stream/id/master.m3u8, req.params.id = "id/master.m3u8"
+    // For /stream/id/hls1/main/0.ts, req.params.id = "id/hls1/main/0.ts"
     
-    if (!streamPathMatch) {
-      console.error('[proxyStream] Path match failed:', {
+    const fullPath = req.params.id || '';
+    
+    if (!fullPath) {
+      console.error('[proxyStream] No id parameter found:', {
+        params: req.params,
         path: req.path,
         url: req.url,
         originalUrl: req.originalUrl,
       });
       return res.status(400).json({ 
-        message: 'Invalid stream path', 
+        message: 'Invalid stream path - no id parameter', 
         path: req.path,
         url: req.url,
+        params: req.params,
       });
     }
-    
-    // streamPathMatch[1] contains everything after /stream/
-    const fullPath = streamPathMatch[1];
     
     // Split the path to get id and filePath
     const pathParts = fullPath.split('/');
     const id = pathParts[0];
     const filePath = pathParts.slice(1).join('/') || '';
     
-    console.log('[proxyStream] Parsed:', { id, filePath, fullPath, path: req.path, url: req.url });
+    console.log('[proxyStream] Parsed:', { id, filePath, fullPath, path: req.path, url: req.url, params: req.params });
     
     if (!jellyfinService.isInitialized()) {
       const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
