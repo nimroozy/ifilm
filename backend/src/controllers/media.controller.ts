@@ -571,15 +571,41 @@ export const proxyStream = async (req: Request, res: Response) => {
     }
     
     // If not found in req.query, parse from req.url (for regex routes)
+    // req.url includes the full path with query string
     if (audioTrackIndex === null || !requestedMediaSourceId) {
+      // Try req.url first (includes query string)
       const urlParts = req.url.split('?');
       if (urlParts.length > 1) {
         const queryParams = new URLSearchParams(urlParts[1]);
-        if (!audioTrackIndex && queryParams.has('audioTrack')) {
-          audioTrackIndex = parseInt(queryParams.get('audioTrack')!);
+        if (audioTrackIndex === null && queryParams.has('audioTrack')) {
+          const audioTrackValue = queryParams.get('audioTrack');
+          if (audioTrackValue) {
+            audioTrackIndex = parseInt(audioTrackValue);
+            console.log('[proxyStream] Parsed audioTrack from req.url:', audioTrackIndex);
+          }
         }
         if (!requestedMediaSourceId && queryParams.has('mediaSourceId')) {
           requestedMediaSourceId = queryParams.get('mediaSourceId')!;
+          console.log('[proxyStream] Parsed mediaSourceId from req.url:', requestedMediaSourceId);
+        }
+      }
+      
+      // Also try req.originalUrl as fallback
+      if ((audioTrackIndex === null || !requestedMediaSourceId) && req.originalUrl !== req.url) {
+        const originalUrlParts = req.originalUrl.split('?');
+        if (originalUrlParts.length > 1) {
+          const queryParams = new URLSearchParams(originalUrlParts[1]);
+          if (audioTrackIndex === null && queryParams.has('audioTrack')) {
+            const audioTrackValue = queryParams.get('audioTrack');
+            if (audioTrackValue) {
+              audioTrackIndex = parseInt(audioTrackValue);
+              console.log('[proxyStream] Parsed audioTrack from req.originalUrl:', audioTrackIndex);
+            }
+          }
+          if (!requestedMediaSourceId && queryParams.has('mediaSourceId')) {
+            requestedMediaSourceId = queryParams.get('mediaSourceId')!;
+            console.log('[proxyStream] Parsed mediaSourceId from req.originalUrl:', requestedMediaSourceId);
+          }
         }
       }
     }
