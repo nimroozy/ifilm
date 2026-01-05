@@ -6,17 +6,23 @@ A modern media streaming platform built with React, Node.js, and Jellyfin integr
 
 ### Fresh Ubuntu Server Installation
 
+**Quick Install (Recommended):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nimroozy/ifilm/main/install.sh | sudo bash
 ```
 
-Or clone and run:
-
+**Or clone and run:**
 ```bash
 git clone https://github.com/nimroozy/ifilm.git
 cd ifilm
 sudo bash install.sh
 ```
+
+**Default Configuration:**
+- 🌐 **Port:** 80 (HTTP)
+- 👤 **Default Admin:** `admin@ifilm.af` / `Haroon@00`
+- 🗄️ **Database:** PostgreSQL (ifilm/ifilm123)
+- 📦 **Installation Path:** `/opt/ifilm`
 
 ### What gets installed:
 
