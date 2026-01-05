@@ -823,59 +823,65 @@ export default function Watch() {
                   {audioTracks && audioTracks.length > 0 ? (
                     <div className="relative">
                       <button
-                        onClick={() => setShowAudioMenu(!showAudioMenu)}
-                        className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAudioMenu(!showAudioMenu);
+                          setShowSettingsMenu(false); // Close settings if open
+                        }}
+                        className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm relative"
                         aria-label="Audio Tracks"
                         title={`Audio Tracks (${audioTracks.length} available)`}
                       >
                         <Languages className="h-5 w-5" />
                         {audioTracks.length > 1 && (
-                          <span className="absolute -top-1 -right-1 bg-[#E50914] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                          <span className="absolute -top-1 -right-1 bg-[#E50914] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                             {audioTracks.length}
                           </span>
                         )}
                       </button>
                       {showAudioMenu && (
-                        <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[200px] z-50 max-h-[300px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                        <div 
+                          className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[250px] z-[100] max-h-[300px] overflow-y-auto" 
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
                           <div className="p-2">
-                            <div className="text-white text-xs font-semibold mb-2 px-2">Audio Tracks ({audioTracks.length})</div>
+                            <div className="text-white text-xs font-semibold mb-2 px-2 border-b border-white/10 pb-2">
+                              Audio Tracks ({audioTracks.length})
+                            </div>
                             {audioTracks.map((track, index) => (
                               <button
-                                key={index}
-                                onClick={() => {
+                                key={`${track.mediaSourceId}-${index}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setSelectedAudioTrack(index);
                                   setShowAudioMenu(false);
                                   // Reload stream with new audio track
                                   if (media?.id) {
+                                    console.log('[Watch] Switching to audio track:', index, track);
                                     loadStreamUrl(media.id, index, track.mediaSourceId);
                                   }
                                 }}
-                                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors mb-1 ${
                                   selectedAudioTrack === index
                                     ? 'bg-[#E50914] text-white'
                                     : 'text-white/80 hover:bg-white/10'
                                 }`}
                               >
-                                <div className="font-medium">{track.name}</div>
-                                <div className="text-xs opacity-75">{track.language} • {track.codec}</div>
+                                <div className="font-medium text-sm">{track.name}</div>
+                                <div className="text-xs opacity-75 mt-0.5">{track.language.toUpperCase()} • {track.codec.toUpperCase()}</div>
                               </button>
                             ))}
                           </div>
                         </div>
                       )}
                     </div>
-                  ) : (
-                    // Debug: Show indicator if no tracks (for debugging)
-                    process.env.NODE_ENV === 'development' && (
-                      <div className="text-white/50 text-xs" title="No audio tracks detected">
-                        <Languages className="h-5 w-5 opacity-50" />
-                      </div>
-                    )
-                  )}
+                  ) : null}
                   {/* Settings Menu */}
                   <div className="relative">
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setShowSettingsMenu(!showSettingsMenu);
                         setShowAudioMenu(false); // Close audio menu if open
                       }}
@@ -886,7 +892,7 @@ export default function Watch() {
                       <Settings className="h-5 w-5" />
                     </button>
                     {showSettingsMenu && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[250px] z-50" onClick={(e) => e.stopPropagation()}>
+                      <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[250px] z-[100]" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
                         <div className="p-3">
                           {/* Playback Speed */}
                           <div className="mb-4">
