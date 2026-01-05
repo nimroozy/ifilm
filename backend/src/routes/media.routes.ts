@@ -22,8 +22,9 @@ router.get('/movies/:id/stream', authMiddleware, getStreamUrl);
 // Stream proxy - Proxies HLS requests to Jellyfin
 // Note: No auth middleware because HLS.js requests don't include auth headers
 // Security is maintained by authenticating with Jellyfin on the backend
-// Use catch-all route to match /stream/:id and /stream/:id/* patterns
-// This matches /stream/id, /stream/id/master.m3u8, /stream/id/hls1/main/0.ts, etc.
-router.get('/stream/*', proxyStream);
+// Use multiple routes to match /stream/:id and /stream/:id/* patterns
+// Route order matters - more specific routes first
+router.get('/stream/:id/:filePath(*)', proxyStream); // Matches /stream/id/path/to/file
+router.get('/stream/:id', proxyStream); // Matches /stream/id (fallback, though unlikely)
 
 export default router;
