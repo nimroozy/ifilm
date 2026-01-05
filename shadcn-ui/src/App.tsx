@@ -17,6 +17,7 @@ import LibraryManagement from './pages/admin/LibraryManagement';
 import UserManagement from './pages/admin/UserManagement';
 import R2Settings from '@/pages/admin/R2Settings';
 import R2FileManager from '@/pages/admin/R2FileManager';
+import CacheSettings from './pages/admin/CacheSettings';
 import NotFound from './pages/NotFound';
 import Footer from './components/Footer';
 import { User } from './types/auth.types';
