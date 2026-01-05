@@ -666,6 +666,14 @@ export const proxyStream = async (req: Request, res: Response) => {
     }
 
     console.log('[proxyStream] Proxying request to Jellyfin:', targetUrl);
+    console.log('[proxyStream] Request details:', {
+      id,
+      filePath,
+      audioTrackIndex: audioTrackIndex !== null ? audioTrackIndex : 'none',
+      audioStreamIndex: audioStreamIndex !== null ? audioStreamIndex : 'none',
+      mediaSourceId: mediaSourceId || 'none',
+      queryParams: req.query,
+    });
 
     // Proxy the request to Jellyfin with user token
     const response = await axios.get(targetUrl, {
