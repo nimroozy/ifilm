@@ -897,10 +897,17 @@ export const proxyStream = async (req: Request, res: Response) => {
         }
       } else {
         // For playlist files (.m3u8), include MediaSourceId and AudioStreamIndex if available
-        // If from HLS playlist, use the HLS playlist path
+        // IMPORTANT: For variant playlists (main.m3u8), AudioStreamIndex must be in the URL
+        // so Jellyfin generates segments with the correct audio track
         if (isFromHlsPlaylist && hlsPlaylistId) {
           targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${normalizedFilePath}?${urlParams.toString()}`;
         } else {
+          // For variant playlists, ensure AudioStreamIndex is included if specified
+          // This is critical - Jellyfin uses this to generate segments with the correct audio
+          if (normalizedFilePath === 'main.m3u8' && audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
+            urlParams.set('AudioStreamIndex', String(audioStreamIndex));
+            console.log('[proxyStream] Adding AudioStreamIndex to variant playlist request:', audioStreamIndex);
+          }
           targetUrl = `${serverUrl}/Videos/${id}/${normalizedFilePath}?${urlParams.toString()}`;
         }
       }
