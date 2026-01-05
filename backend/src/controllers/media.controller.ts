@@ -811,7 +811,7 @@ export const proxyStream = async (req: Request, res: Response) => {
             // Extract just the filename/path
             const pathParts = urlPath.split('/').filter(p => p);
             if (pathParts.length > 0) {
-              return queryString ? `${proxyBase}/${pathParts.join('/')}?${queryString}` : `${proxyBase}/${pathParts.join('/')}`;
+              return finalQueryString ? `${proxyBase}/${pathParts.join('/')}?${finalQueryString}` : `${proxyBase}/${pathParts.join('/')}`;
             }
           }
           
