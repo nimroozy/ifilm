@@ -334,6 +334,11 @@ export default function Watch() {
           }
         }
       });
+      
+      // Listen for audio track switching
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (event, data) => {
+        console.log('[Watch] Audio track switched:', data.id, hls.audioTracks[data.id]);
+      });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
@@ -856,10 +861,43 @@ export default function Watch() {
                                   e.stopPropagation();
                                   setSelectedAudioTrack(index);
                                   setShowAudioMenu(false);
-                                  // Reload stream with new audio track
-                                  if (media?.id) {
-                                    console.log('[Watch] Switching to audio track:', index, track);
-                                    loadStreamUrl(media.id, index, track.mediaSourceId);
+                                  
+                                  // Switch audio track on existing HLS instance without reloading
+                                  if (hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 0) {
+                                    try {
+                                      // Find the matching audio track in HLS
+                                      const hlsTrackIndex = Math.min(index, hlsRef.current.audioTracks.length - 1);
+                                      hlsRef.current.audioTrack = hlsTrackIndex;
+                                      console.log('[Watch] Switched to audio track:', hlsTrackIndex, hlsRef.current.audioTracks[hlsTrackIndex]);
+                                      toast.success(`Switched to ${track.name}`);
+                                    } catch (error) {
+                                      console.error('[Watch] Failed to switch audio track:', error);
+                                      toast.error('Failed to switch audio track');
+                                    }
+                                  } else if (videoRef.current && videoRef.current.audioTracks && videoRef.current.audioTracks.length > 0) {
+                                    // Native HLS (Safari)
+                                    try {
+                                      const trackIndex = Math.min(index, videoRef.current.audioTracks.length - 1);
+                                      if (videoRef.current.audioTracks[trackIndex]) {
+                                        // Disable all tracks first
+                                        for (let i = 0; i < videoRef.current.audioTracks.length; i++) {
+                                          videoRef.current.audioTracks[i].enabled = false;
+                                        }
+                                        // Enable selected track
+                                        videoRef.current.audioTracks[trackIndex].enabled = true;
+                                        console.log('[Watch] Switched to native audio track:', trackIndex);
+                                        toast.success(`Switched to ${track.name}`);
+                                      }
+                                    } catch (error) {
+                                      console.error('[Watch] Failed to switch native audio track:', error);
+                                      toast.error('Failed to switch audio track');
+                                    }
+                                  } else {
+                                    // Fallback: reload stream with new audio track
+                                    console.log('[Watch] HLS tracks not available, reloading stream with audio track:', index, track);
+                                    if (media?.id) {
+                                      loadStreamUrl(media.id, index, track.mediaSourceId);
+                                    }
                                   }
                                 }}
                                 className={`w-full text-left px-3 py-2 rounded text-sm transition-colors mb-1 ${
