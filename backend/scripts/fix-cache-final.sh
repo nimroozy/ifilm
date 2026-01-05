@@ -1,61 +1,42 @@
 #!/bin/bash
 
-# Final fix - explicitly add proxy_buffering on to stream location block
-
-set -e
-
-NGINX_CONFIG="/etc/nginx/sites-available/ifilm"
-TMP_CONFIG=$(mktemp)
-
-echo "🔧 Final cache fix - ensuring proxy_buffering is ON in stream location..."
-
-# Backup
-sudo cp "$NGINX_CONFIG" "${NGINX_CONFIG}.bak.$(date +%s)"
-
-# Copy current config
-sudo cp "$NGINX_CONFIG" "$TMP_CONFIG"
-
-# Show current state
-echo ""
-echo "Current stream location block:"
-grep -A 25 "location ~\* \^\/api\/media\/stream" "$TMP_CONFIG" | head -30
+echo "=== Final Cache Fix ==="
 echo ""
 
-# Method 1: Replace proxy_buffering off with on in stream block
-sed -i '/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
-    s/proxy_buffering off;/proxy_buffering on;/g
-}' "$TMP_CONFIG"
+CONFIG_FILE="/etc/nginx/sites-available/ifilm"
 
-# Method 2: If proxy_buffering doesn't exist, add it after proxy_request_buffering
-if ! grep -A 25 "location ~\* \^\/api\/media\/stream" "$TMP_CONFIG" | grep -q "proxy_buffering"; then
-    echo "Adding proxy_buffering on to stream block..."
-    sed -i '/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
-        /proxy_request_buffering off;/a\
+# Ensure proxy_buffering is on and add proxy_max_temp_file_size
+echo "1. Ensuring proxy_buffering is on and adding proxy_max_temp_file_size..."
+sudo sed -i '/location ^~ \/api\/media\/stream\//,/^[[:space:]]*}/ {
+    /proxy_buffering on;/! {
+        /proxy_buffering off;/s/proxy_buffering off;/proxy_buffering on;/
+        /proxy_buffering/! {
+            /proxy_request_buffering off;/a\
         proxy_buffering on;
-    }' "$TMP_CONFIG"
-fi
+        }
+    }
+    /proxy_max_temp_file_size/! {
+        /proxy_hide_header "ETag";/a\
+        proxy_max_temp_file_size 0;
+    }
+}' "$CONFIG_FILE"
 
-# Verify
+# Verify changes
 echo ""
-echo "Updated stream location block (showing proxy_buffering and proxy_cache):"
-grep -A 25 "location ~\* \^\/api\/media\/stream" "$TMP_CONFIG" | grep -E "proxy_buffering|proxy_cache|proxy_request"
+echo "2. Verifying stream location block:"
+grep -A 5 "proxy_buffering\|proxy_max_temp_file_size" "$CONFIG_FILE" | grep -A 5 "location ^~ /api/media/stream" | head -10
 echo ""
 
-# Copy to actual config
-sudo cp "$TMP_CONFIG" "$NGINX_CONFIG"
-
-# Test and reload
-echo "🧪 Testing NGINX configuration..."
+# Test config
+echo "3. Testing NGINX configuration..."
 if sudo nginx -t; then
     echo "✅ Config test passed"
     sudo systemctl reload nginx
     echo "✅ NGINX reloaded"
-    echo ""
-    echo "✅ Cache configuration fixed!"
 else
     echo "❌ Config test failed"
     exit 1
 fi
 
-rm -f "$TMP_CONFIG"
-
+echo ""
+echo "=== Fix Complete ==="
