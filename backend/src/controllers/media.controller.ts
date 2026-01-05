@@ -644,7 +644,7 @@ export const proxyStream = async (req: Request, res: Response) => {
     let audioStreamIndex: number | null = null;
     let hlsPlaylistId: string | null = null; // Store playlistId when using /hls endpoint
     
-    // Extract hlsPlaylistId from query params if present (from rewritten playlist URLs)
+    // Extract hlsPlaylistId and audioTrack from query params if present (from rewritten playlist URLs)
     // Check both req.query and manually parse from req.url/req.originalUrl
     if (req.query.hlsPlaylistId) {
       hlsPlaylistId = req.query.hlsPlaylistId as string;
@@ -658,15 +658,31 @@ export const proxyStream = async (req: Request, res: Response) => {
           hlsPlaylistId = queryParams.get('hlsPlaylistId')!;
           console.log('[proxyStream] Extracted hlsPlaylistId from req.url:', hlsPlaylistId);
         }
+        // Also extract audioTrack from req.url for segment requests
+        if (!audioTrackIndex && queryParams.has('audioTrack')) {
+          const audioTrackValue = queryParams.get('audioTrack');
+          if (audioTrackValue) {
+            audioTrackIndex = parseInt(audioTrackValue);
+            console.log('[proxyStream] Extracted audioTrack from req.url for segment:', audioTrackIndex);
+          }
+        }
       }
       // Also try req.originalUrl
-      if (!hlsPlaylistId && req.originalUrl !== req.url) {
+      if ((!hlsPlaylistId || !audioTrackIndex) && req.originalUrl !== req.url) {
         const originalUrlParts = req.originalUrl.split('?');
         if (originalUrlParts.length > 1) {
           const queryParams = new URLSearchParams(originalUrlParts[1]);
-          if (queryParams.has('hlsPlaylistId')) {
+          if (!hlsPlaylistId && queryParams.has('hlsPlaylistId')) {
             hlsPlaylistId = queryParams.get('hlsPlaylistId')!;
             console.log('[proxyStream] Extracted hlsPlaylistId from req.originalUrl:', hlsPlaylistId);
+          }
+          // Also extract audioTrack from req.originalUrl for segment requests
+          if (!audioTrackIndex && queryParams.has('audioTrack')) {
+            const audioTrackValue = queryParams.get('audioTrack');
+            if (audioTrackValue) {
+              audioTrackIndex = parseInt(audioTrackValue);
+              console.log('[proxyStream] Extracted audioTrack from req.originalUrl for segment:', audioTrackIndex);
+            }
           }
         }
       }
