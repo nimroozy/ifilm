@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Settings, Library, Users, LogOut, Menu, Shield, Cloud, FolderOpen } from 'lucide-react';
+import { LayoutDashboard, Settings, Library, Users, LogOut, Menu, Shield, Cloud, FolderOpen, HardDrive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
