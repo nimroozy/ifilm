@@ -790,9 +790,12 @@ export const proxyStream = async (req: Request, res: Response) => {
       urlParams.append('MediaSourceId', mediaSourceId);
     }
     // Add AudioStreamIndex if specified (Jellyfin uses this to select audio track)
-    if (audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
-      urlParams.append('AudioStreamIndex', audioStreamIndex.toString());
-      console.log('[proxyStream] Adding AudioStreamIndex to request:', audioStreamIndex);
+    if (audioStreamIndex !== null) {
+      const audioIndex = Number(audioStreamIndex);
+      if (!isNaN(audioIndex)) {
+        urlParams.append('AudioStreamIndex', audioIndex.toString());
+        console.log('[proxyStream] Adding AudioStreamIndex to request:', audioIndex);
+      }
     }
     
     if (filePath) {
@@ -818,8 +821,12 @@ export const proxyStream = async (req: Request, res: Response) => {
           segmentParams.append('MediaSourceId', mediaSourceId);
         }
         // Only include AudioStreamIndex if NOT from HLS playlist (HLS playlist segments already have correct audio)
-        if (audioStreamIndex !== null && typeof audioStreamIndex === 'number' && !isFromHlsPlaylist) {
-          segmentParams.append('AudioStreamIndex', audioStreamIndex.toString());
+        if (audioStreamIndex !== null && !isFromHlsPlaylist) {
+          const audioIndex = Number(audioStreamIndex);
+          if (!isNaN(audioIndex)) {
+            segmentParams.append('AudioStreamIndex', audioIndex.toString());
+            console.log('[proxyStream] Adding AudioStreamIndex to segment request:', audioIndex);
+          }
         }
         
         // If this segment is from an HLS playlist and we have the playlistId, use the HLS playlist path
@@ -1014,7 +1021,10 @@ export const proxyStream = async (req: Request, res: Response) => {
           // ALWAYS include these params so segments can use them as fallback
           const queryParams = new URLSearchParams(existingQueryString);
           if (audioStreamIndex !== null) {
-            queryParams.set('audioTrack', audioStreamIndex.toString());
+            const audioIndex = Number(audioStreamIndex);
+            if (!isNaN(audioIndex)) {
+              queryParams.set('audioTrack', audioIndex.toString());
+            }
           }
           if (mediaSourceId) {
             queryParams.set('mediaSourceId', mediaSourceId);
