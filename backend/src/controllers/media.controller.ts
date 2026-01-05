@@ -1665,7 +1665,11 @@ export const proxyImage = async (req: Request, res: Response) => {
     // Set appropriate headers
     const contentType = response.headers['content-type'] || 'image/jpeg';
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+    // Don't set Cache-Control header - let NGINX handle caching
+    // NGINX will ignore this header anyway due to proxy_ignore_headers
+    // Removing it prevents any potential conflicts
+    res.removeHeader('Cache-Control');
+    res.removeHeader('Vary'); // Remove Vary header to allow NGINX caching
     res.setHeader('Access-Control-Allow-Origin', '*');
     // Remove CSP header for images to avoid conflicts with frontend CSP
     res.removeHeader('Content-Security-Policy');
