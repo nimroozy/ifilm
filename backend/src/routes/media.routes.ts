@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getMovies, getMovieDetails, getSeries, getSeriesDetails, getEpisodes, searchMedia, getStreamUrl, proxyStream, getRelatedMovies, proxyImage } from '../controllers/media.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+// Note: authMiddleware removed from /movies/:id/stream - getStreamUrl handles auth internally with fallback
 
 const router = Router();
 
@@ -17,7 +17,8 @@ router.get('/search', searchMedia);
 router.get('/images/:itemId/:imageType', proxyImage);
 
 // Protected routes - Authentication required for streaming
-router.get('/movies/:id/stream', authMiddleware, getStreamUrl);
+// Note: authMiddleware is optional here - getStreamUrl handles auth fallback internally
+router.get('/movies/:id/stream', getStreamUrl);
 
 // Stream proxy - Proxies HLS requests to Jellyfin
 // Note: No auth middleware because HLS.js requests don't include auth headers
