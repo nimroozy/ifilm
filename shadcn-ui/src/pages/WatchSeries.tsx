@@ -391,13 +391,14 @@ export default function WatchSeries() {
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('HLS manifest parsed, ready to play');
         console.log('[WatchSeries] Available quality levels:', hls.levels?.length || 0);
+        console.log('[WatchSeries] Available audio tracks:', hls.audioTracks.length);
         
         // Set audio track if one is selected
         if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
           try {
             const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
             hls.audioTrack = trackIndex;
-            console.log('[WatchSeries] Set audio track to index:', trackIndex);
+            console.log('[WatchSeries] Set audio track to index:', trackIndex, hls.audioTracks[trackIndex]);
           } catch (error) {
             console.warn('[WatchSeries] Failed to set audio track:', error);
           }
@@ -427,6 +428,11 @@ export default function WatchSeries() {
             console.warn('[WatchSeries] Failed to set audio track:', error);
           }
         }
+      });
+      
+      // Listen for audio track switching
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (event, data) => {
+        console.log('[WatchSeries] Audio track switched:', data.id, hls.audioTracks[data.id]);
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
@@ -989,12 +995,47 @@ export default function WatchSeries() {
                             {audioTracks.map((track, index) => (
                               <button
                                 key={index}
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setSelectedAudioTrack(index);
                                   setShowAudioMenu(false);
-                                  // Reload stream with new audio track
-                                  if (selectedEpisode) {
-                                    loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
+                                  
+                                  // Switch audio track on existing HLS instance without reloading
+                                  if (hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 0) {
+                                    try {
+                                      // Find the matching audio track in HLS
+                                      const hlsTrackIndex = Math.min(index, hlsRef.current.audioTracks.length - 1);
+                                      hlsRef.current.audioTrack = hlsTrackIndex;
+                                      console.log('[WatchSeries] Switched to audio track:', hlsTrackIndex, hlsRef.current.audioTracks[hlsTrackIndex]);
+                                      toast.success(`Switched to ${track.name}`);
+                                    } catch (error) {
+                                      console.error('[WatchSeries] Failed to switch audio track:', error);
+                                      toast.error('Failed to switch audio track');
+                                    }
+                                  } else if (videoRef.current && videoRef.current.audioTracks && videoRef.current.audioTracks.length > 0) {
+                                    // Native HLS (Safari)
+                                    try {
+                                      const trackIndex = Math.min(index, videoRef.current.audioTracks.length - 1);
+                                      if (videoRef.current.audioTracks[trackIndex]) {
+                                        // Disable all tracks first
+                                        for (let i = 0; i < videoRef.current.audioTracks.length; i++) {
+                                          videoRef.current.audioTracks[i].enabled = false;
+                                        }
+                                        // Enable selected track
+                                        videoRef.current.audioTracks[trackIndex].enabled = true;
+                                        console.log('[WatchSeries] Switched to native audio track:', trackIndex);
+                                        toast.success(`Switched to ${track.name}`);
+                                      }
+                                    } catch (error) {
+                                      console.error('[WatchSeries] Failed to switch native audio track:', error);
+                                      toast.error('Failed to switch audio track');
+                                    }
+                                  } else {
+                                    // Fallback: reload stream with new audio track
+                                    console.log('[WatchSeries] HLS tracks not available, reloading stream with audio track:', index, track);
+                                    if (selectedEpisode) {
+                                      loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
+                                    }
                                   }
                                 }}
                                 className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
