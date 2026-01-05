@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Languages, Gauge, Loader2, X } from 'lucide-react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
@@ -289,6 +289,35 @@ export default function WatchSeries() {
     } finally {
       setLoadingStream(false);
     }
+  };
+
+  const findAndLoadEpisode = async (episodeId: string, seasons: Array<{ id: string; name: string; seasonNumber: number }>) => {
+    // Search through all seasons to find the episode
+    for (const season of seasons) {
+      try {
+        const response = await api.get(`/media/series/${id}/episodes?seasonId=${season.id}`);
+        const episodesData = response.data.episodes || response.data.items || [];
+        const episode = episodesData.find((ep: any) => ep.id === episodeId);
+        
+        if (episode) {
+          console.log('[WatchSeries] Found episode in season', season.seasonNumber);
+          setSelectedSeason(season.seasonNumber);
+          setEpisodes(episodesData.map((ep: any) => ({
+            id: ep.id,
+            name: ep.name || ep.title,
+            episodeNumber: ep.episodeNumber || ep.indexNumber || 0,
+            overview: ep.overview || '',
+            thumbnailUrl: ep.thumbnailUrl || ep.posterUrl,
+          })));
+          // Auto-select the episode
+          await handleEpisodeSelect(episodeId);
+          return;
+        }
+      } catch (err) {
+        console.warn(`[WatchSeries] Failed to load episodes for season ${season.seasonNumber}:`, err);
+      }
+    }
+    console.warn('[WatchSeries] Episode not found in any season:', episodeId);
   };
 
   const handleEpisodeSelect = async (episodeId: string) => {
