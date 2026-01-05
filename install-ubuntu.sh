@@ -172,6 +172,27 @@ else
     echo "⚠️  Migration script not found. Skipping migrations."
 fi
 
+# Prompt to create admin user
+echo ""
+echo -e "${YELLOW}📝 Admin User Setup${NC}"
+read -p "Do you want to create an admin user now? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    read -p "Admin email: " ADMIN_EMAIL
+    read -p "Admin username: " ADMIN_USERNAME
+    read -sp "Admin password: " ADMIN_PASSWORD
+    echo
+    if [ ! -z "$ADMIN_EMAIL" ] && [ ! -z "$ADMIN_USERNAME" ] && [ ! -z "$ADMIN_PASSWORD" ]; then
+        npm run create-admin -- "$ADMIN_EMAIL" "$ADMIN_USERNAME" "$ADMIN_PASSWORD" || echo "Failed to create admin user. You can create it later with: npm run create-admin"
+    else
+        echo "Skipping admin user creation. You can create it later with: npm run create-admin"
+    fi
+else
+    echo "You can create an admin user later with:"
+    echo "  cd /opt/ifilm/backend"
+    echo "  npm run create-admin <email> <username> <password>"
+fi
+
 cd ..
 
 # Setup frontend

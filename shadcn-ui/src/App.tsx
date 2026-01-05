@@ -142,6 +142,14 @@ const App = () => (
 
             {/* Admin Routes - Admin role required */}
             <Route
+              path="/admin"
+              element={
+                <AdminRoute>
+                  <Navigate to="/admin/dashboard" replace />
+                </AdminRoute>
+              }
+            />
+            <Route
               path="/admin/dashboard"
               element={
                 <AdminRoute>
