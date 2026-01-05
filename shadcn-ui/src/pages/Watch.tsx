@@ -321,7 +321,19 @@ export default function Watch() {
       return;
     }
 
+    // CRITICAL: Destroy any existing HLS instance before creating a new one
+    // This ensures clean state when switching audio tracks
+    if (hlsRef.current) {
+      console.log('[Watch] Destroying existing HLS instance before reinitializing');
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
     const video = videoRef.current;
+    
+    // Clear any existing source
+    video.src = '';
+    video.load();
 
     // Set up event listeners
     const handleTimeUpdate = () => {
@@ -1116,43 +1128,79 @@ export default function Watch() {
                                   e.stopPropagation();
                                   setShowAudioMenu(false);
                                   
-                                  // Jellyfin's HLS doesn't expose multiple audio tracks in the manifest
-                                  // So we need to reload the stream with the selected audio track
-                                  // Preserve playback state to make it feel seamless
+                                  // CRITICAL: Jellyfin does NOT support live audio switching on an active stream
+                                  // We MUST stop playback, destroy the HLS instance, and reload with AudioStreamIndex
                                   const wasPlaying = isPlaying;
                                   const currentTime = videoRef.current?.currentTime || 0;
                                   
-                                  setSelectedAudioTrack(index);
-                                  console.log('[Watch] Switching audio track (will reload stream):', {
+                                  console.log('[Watch] Switching audio track - stopping playback and reloading stream:', {
                                     arrayIndex: index,
                                     jellyfinIndex: track.index,
                                     track: track.name,
+                                    currentTime,
+                                    wasPlaying,
                                   });
                                   
-                                  // Reload stream with new audio track using Jellyfin's /hls endpoint
+                                  // Step 1: Stop current playback
+                                  if (videoRef.current) {
+                                    videoRef.current.pause();
+                                    videoRef.current.currentTime = 0; // Reset to prevent buffering issues
+                                  }
+                                  
+                                  // Step 2: Destroy existing HLS instance
+                                  if (hlsRef.current) {
+                                    console.log('[Watch] Destroying existing HLS instance');
+                                    hlsRef.current.destroy();
+                                    hlsRef.current = null;
+                                  }
+                                  
+                                  // Step 3: Clear video source
+                                  if (videoRef.current) {
+                                    videoRef.current.src = '';
+                                    videoRef.current.load(); // Force reload
+                                  }
+                                  
+                                  // Step 4: Update selected track and save preference
+                                  setSelectedAudioTrack(index);
                                   if (media?.id) {
-                                    // Pause video during reload
-                                    if (videoRef.current && wasPlaying) {
-                                      videoRef.current.pause();
-                                    }
+                                    saveAudioTrack(media.id, index);
+                                  }
+                                  
+                                  // Step 5: Load new stream URL with AudioStreamIndex
+                                  if (media?.id) {
+                                    // Clear stream URL first to trigger re-initialization
+                                    setStreamUrl(null);
                                     
+                                    // Load new stream with audio track parameter
+                                    // This will generate a new Jellyfin URL with AudioStreamIndex={track.index}
                                     await loadStreamUrl(media.id, index, track.mediaSourceId);
                                     
-                                    // Restore playback position and resume after a brief delay
-                                    if (videoRef.current) {
-                                      setTimeout(() => {
-                                        if (videoRef.current) {
-                                          videoRef.current.currentTime = currentTime;
-                                          if (wasPlaying) {
-                                            videoRef.current.play().catch((err: any) => {
-                                              console.error('[Watch] Failed to resume playback:', err);
-                                            });
-                                          }
+                                    // Step 6: Wait for player to initialize, then restore position and resume
+                                    // The useEffect will handle player initialization when streamUrl changes
+                                    setTimeout(() => {
+                                      if (videoRef.current && videoRef.current.readyState >= 2) {
+                                        videoRef.current.currentTime = currentTime;
+                                        if (wasPlaying) {
+                                          videoRef.current.play().catch((err: any) => {
+                                            console.error('[Watch] Failed to resume playback:', err);
+                                          });
                                         }
-                                      }, 500);
-                                    }
-                                    
-                                    toast.success(`Switched to ${track.name}`);
+                                        toast.success(`Switched to ${track.name}`);
+                                      } else {
+                                        // If video not ready, wait a bit more
+                                        setTimeout(() => {
+                                          if (videoRef.current) {
+                                            videoRef.current.currentTime = currentTime;
+                                            if (wasPlaying) {
+                                              videoRef.current.play().catch((err: any) => {
+                                                console.error('[Watch] Failed to resume playback:', err);
+                                              });
+                                            }
+                                            toast.success(`Switched to ${track.name}`);
+                                          }
+                                        }, 1000);
+                                      }
+                                    }, 1000);
                                   }
                                   
                                   // Skip the old HLS.js audio track switching code since Jellyfin doesn't support it

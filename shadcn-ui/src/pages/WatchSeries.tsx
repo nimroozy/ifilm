@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Languages, Gauge } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Languages, Gauge, Loader2, X } from 'lucide-react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
-import { resolveMediaUrl } from '@/utils/urlSanitizer';
+import { resolveMediaUrl, getPlaceholderImage } from '@/utils/urlSanitizer';
 
 interface SeriesDetails {
   id: string;
@@ -348,17 +348,17 @@ export default function WatchSeries() {
       return;
     }
 
-    const video = videoRef.current;
-
-    // Clean up previous HLS instance if it exists
+    // CRITICAL: Destroy any existing HLS instance before creating a new one
+    // This ensures clean state when switching audio tracks or episodes
     if (hlsRef.current) {
-      console.log('[WatchSeries] Destroying previous HLS instance');
+      console.log('[WatchSeries] Destroying existing HLS instance before reinitializing');
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
-    // Reset video element
-    video.pause();
+    const video = videoRef.current;
+    
+    // Clear any existing source
     video.src = '';
     video.load();
     setProgress(0);
@@ -624,6 +624,71 @@ export default function WatchSeries() {
     };
   }, [playerSize]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          if (videoRef.current) {
+            videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+          }
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (videoRef.current && videoRef.current.duration) {
+            videoRef.current.currentTime = Math.min(
+              videoRef.current.duration,
+              videoRef.current.currentTime + 10
+            );
+          }
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          if (videoRef.current) {
+            const newVolume = Math.min(1, videoRef.current.volume + 0.1);
+            videoRef.current.volume = newVolume;
+            setVolume(newVolume);
+            setIsMuted(false);
+          }
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          if (videoRef.current) {
+            const newVolume = Math.max(0, videoRef.current.volume - 0.1);
+            videoRef.current.volume = newVolume;
+            setVolume(newVolume);
+            setIsMuted(newVolume === 0);
+          }
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'm':
+        case 'M':
+          e.preventDefault();
+          toggleMute();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPlaying, volume, isMuted]);
+
   // Check AirPlay availability and set attributes
   useEffect(() => {
     const checkAirPlayAvailability = () => {
@@ -714,172 +779,265 @@ export default function WatchSeries() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 text-[#E50914] animate-spin mx-auto mb-4" />
+          <div className="text-white text-xl font-medium">Loading series...</div>
+        </div>
       </div>
     );
   }
 
   if (error || !series) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-white text-xl mb-4">{error || 'Series not found'}</div>
-          <button
-            onClick={() => navigate('/series')}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-          >
-            Back to Series
-          </button>
+      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          <div className="mb-6">
+            <X className="h-16 w-16 text-red-600 mx-auto mb-4" />
+            <h2 className="text-white text-2xl font-bold mb-2">Oops! Something went wrong</h2>
+            <p className="text-gray-400 text-lg">{error || 'Series not found'}</p>
+          </div>
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => navigate(-1)}
+              className="px-6 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors font-medium"
+            >
+              Go Back
+            </button>
+            <button
+              onClick={() => navigate('/series')}
+              className="px-6 py-3 bg-[#E50914] text-white rounded-lg hover:bg-[#F40612] transition-colors font-medium"
+            >
+              Browse Series
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
+  // Find current episode info for display
+  const currentEpisode = episodes.find(ep => ep.id === selectedEpisode);
+
   return (
-    <div className="min-h-screen bg-black relative">
-      {/* Backdrop */}
+    <div className="min-h-screen bg-[#0A0A0A] relative overflow-hidden">
+      {/* Enhanced Backdrop with darker cinema effect */}
       {series.backdropUrl && (
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-30"
-          style={{ backgroundImage: `url(${series.backdropUrl})` }}
-        />
+        <div className="absolute inset-0">
+          <div
+            className="absolute inset-0 bg-cover bg-center scale-105"
+            style={{ backgroundImage: `url(${series.backdropUrl})` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A]/98 via-[#0A0A0A]/95 to-[#0A0A0A] backdrop-blur-md" />
+        </div>
       )}
 
-      {/* Header */}
-      <div className="relative z-10 p-4 flex items-center justify-between">
+      {/* Professional Header */}
+      <div className="relative z-20 px-6 py-4 flex items-center justify-between bg-gradient-to-b from-black/60 to-transparent">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-white hover:text-gray-300 transition"
+          className="flex items-center gap-2 text-white hover:text-gray-300 transition-all group"
         >
-          <ArrowLeft className="h-6 w-6" />
-          <span>Back</span>
+          <div className="p-2 rounded-full bg-black/40 group-hover:bg-black/60 transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+          </div>
+          <span className="font-medium hidden sm:inline">Back</span>
         </button>
-        <div className="text-white text-lg font-semibold">{series.title}</div>
+        <div className="text-white text-lg font-semibold truncate max-w-md text-center">
+          {series.title}
+          {currentEpisode && (
+            <span className="block text-sm text-white/70 font-normal mt-0.5">
+              Episode {currentEpisode.episodeNumber}: {currentEpisode.name}
+            </span>
+          )}
+        </div>
         <div className="w-20" /> {/* Spacer */}
       </div>
 
-      {/* Season Selection */}
-      {series.seasons && series.seasons.length > 0 && (
-        <div className="relative z-10 px-4 mt-6">
-          <div className="mb-6">
-            <h3 className="text-white text-lg font-semibold mb-3">Seasons</h3>
-            <div className="flex gap-2 flex-wrap">
-              {series.seasons.map((season) => (
-                <button
-                  key={season.id}
-                  onClick={() => {
-                    setSelectedSeason(season.seasonNumber);
-                    loadEpisodes(series.id, season.id);
-                  }}
-                  className={`px-4 py-2 rounded transition-colors ${
-                    selectedSeason === season.seasonNumber
-                      ? 'bg-red-600 text-white'
-                      : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
-                >
-                  {season.name || `Season ${season.seasonNumber}`}
-                </button>
-              ))}
+      {/* Series Info Above Player */}
+      <div className="relative z-10 px-6 md:px-12 pt-4 pb-2">
+        <div className="max-w-6xl mx-auto">
+          <h1 className="text-4xl md:text-5xl font-bold text-white mb-2 leading-tight drop-shadow-lg">
+            {series.title}
+          </h1>
+          <div className="flex flex-wrap items-center gap-4 text-white/90 mb-3">
+            <span className="font-semibold text-lg">{series.year}</span>
+            <span className="text-white/40">•</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-yellow-400 text-lg">⭐</span>
+              <span className="font-bold text-lg">{series.rating.toFixed(1)}</span>
             </div>
           </div>
-
-          {/* Episode List */}
-          {selectedSeason !== null && (
-            <div className="relative z-10">
-              <h3 className="text-white text-lg font-semibold mb-3">Episodes</h3>
-              {loadingEpisodes ? (
-                <div className="text-white">Loading episodes...</div>
-              ) : episodes.length > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 relative z-10">
-                  {episodes.map((episode) => (
-                    <button
-                      key={episode.id}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log('🔴🔴🔴 [WatchSeries] Episode button clicked:', episode.id, episode.name);
-                        console.log('🔴🔴🔴 [WatchSeries] handleEpisodeSelect function exists:', typeof handleEpisodeSelect);
-                        try {
-                          handleEpisodeSelect(episode.id);
-                        } catch (error) {
-                          console.error('🔴🔴🔴 [WatchSeries] ERROR in handleEpisodeSelect:', error);
-                        }
-                      }}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log('🔴 [WatchSeries] Episode button mousedown:', episode.id);
-                      }}
-                      className={`relative z-20 text-left rounded-lg overflow-hidden transition-transform hover:scale-105 cursor-pointer ${
-                        selectedEpisode === episode.id
-                          ? 'ring-2 ring-red-600'
-                          : ''
-                      }`}
-                      style={{ pointerEvents: 'auto', position: 'relative', zIndex: 20 }}
-                    >
-                      {episode.thumbnailUrl && (
-                        <img
-                          src={resolveMediaUrl(episode.thumbnailUrl)}
-                          alt={episode.name}
-                          className="w-full aspect-video object-cover"
-                        />
-                      )}
-                      <div className="p-2 bg-[#1F1F1F]">
-                        <div className="text-white text-sm font-medium truncate">
-                          E{episode.episodeNumber} - {episode.name}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-white">No episodes found for this season.</div>
-              )}
-            </div>
+          {series.overview && (
+            <p className="text-gray-200 leading-relaxed text-lg max-w-4xl line-clamp-2 drop-shadow-md">
+              {series.overview}
+            </p>
           )}
+        </div>
+      </div>
+
+      {/* Season and Episode Selection - Professional Layout */}
+      {series.seasons && series.seasons.length > 0 && (
+        <div className="relative z-10 px-6 md:px-12 mt-4">
+          <div className="max-w-6xl mx-auto">
+            {/* Season Selector - Modern Pills */}
+            <div className="mb-6">
+              <h3 className="text-white text-xl font-bold mb-4">Seasons</h3>
+              <div className="flex gap-3 flex-wrap">
+                {series.seasons.map((season) => (
+                  <button
+                    key={season.id}
+                    onClick={() => {
+                      setSelectedSeason(season.seasonNumber);
+                      loadEpisodes(series.id, season.id);
+                    }}
+                    className={`px-6 py-3 rounded-full text-base font-semibold transition-all ${
+                      selectedSeason === season.seasonNumber
+                        ? 'bg-[#E50914] text-white shadow-lg shadow-[#E50914]/50'
+                        : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur-sm border border-white/20'
+                    }`}
+                  >
+                    {season.name || `Season ${season.seasonNumber}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Episode List - Professional Grid */}
+            {selectedSeason !== null && (
+              <div className="mb-8">
+                <h3 className="text-white text-xl font-bold mb-4">
+                  Episodes {loadingEpisodes && <span className="text-sm font-normal text-white/60">(Loading...)</span>}
+                </h3>
+                {loadingEpisodes ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 text-[#E50914] animate-spin" />
+                    <span className="ml-3 text-white">Loading episodes...</span>
+                  </div>
+                ) : episodes.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    {episodes.map((episode) => (
+                      <button
+                        key={episode.id}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleEpisodeSelect(episode.id);
+                        }}
+                        className={`group relative text-left rounded-lg overflow-hidden transition-all ${
+                          selectedEpisode === episode.id
+                            ? 'ring-4 ring-[#E50914] shadow-2xl shadow-[#E50914]/50 scale-105'
+                            : 'hover:scale-105 hover:shadow-xl'
+                        }`}
+                      >
+                        <div className="relative aspect-video bg-[#1F1F1F]">
+                          {episode.thumbnailUrl ? (
+                            <img
+                              src={resolveMediaUrl(episode.thumbnailUrl)}
+                              alt={episode.name}
+                              className="w-full h-full object-cover group-hover:opacity-80 transition-opacity"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.src = getPlaceholderImage();
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1F1F1F] to-[#0A0A0A]">
+                              <Play className="h-12 w-12 text-white/40" />
+                            </div>
+                          )}
+                          {/* Play Overlay on Hover */}
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <div className="bg-[#E50914]/90 rounded-full p-4 transform scale-75 group-hover:scale-100 transition-transform">
+                              <Play className="h-8 w-8 text-white" fill="currentColor" />
+                            </div>
+                          </div>
+                          {/* Episode Number Badge */}
+                          <div className="absolute top-2 left-2 bg-black/80 backdrop-blur-sm px-2 py-1 rounded text-white text-xs font-bold">
+                            E{episode.episodeNumber}
+                          </div>
+                          {/* Currently Playing Indicator */}
+                          {selectedEpisode === episode.id && (
+                            <div className="absolute top-2 right-2 bg-[#E50914] rounded-full p-1.5">
+                              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-3 bg-gradient-to-b from-[#1F1F1F] to-[#0A0A0A]">
+                          <div className="text-white text-sm font-semibold line-clamp-2 mb-1">
+                            {episode.name}
+                          </div>
+                          {episode.overview && (
+                            <div className="text-white/60 text-xs line-clamp-2">
+                              {episode.overview}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <p className="text-gray-400 text-lg">No episodes found for this season.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* Loading indicator when stream is being loaded */}
       {selectedEpisode && !streamUrl && loadingStream && (
-        <div className="relative z-10 w-full mt-6">
-          <div className="relative w-full bg-black flex items-center justify-center" style={{ aspectRatio: '16/9' }}>
-            <div className="text-white text-xl">Loading episode...</div>
+        <div className="relative z-10 w-full mt-6 px-6 md:px-12">
+          <div className="max-w-6xl mx-auto">
+            <div className="relative w-full bg-black flex items-center justify-center" style={{ aspectRatio: '16/9' }}>
+              <div className="text-center">
+                <Loader2 className="h-12 w-12 text-[#E50914] animate-spin mx-auto mb-4" />
+                <div className="text-white text-xl font-medium">Loading episode...</div>
+                {currentEpisode && (
+                  <div className="text-gray-400 text-sm mt-2">
+                    Episode {currentEpisode.episodeNumber}: {currentEpisode.name}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* Error message when stream fails to load */}
       {selectedEpisode && !streamUrl && !loadingStream && error && (
-        <div className="relative z-10 w-full mt-6 px-4">
-          <div className="bg-red-900/50 border border-red-600 rounded-lg p-4 text-white">
-            <div className="font-semibold mb-2">Error loading episode</div>
-            <div className="text-sm">{error}</div>
-            <button
-              onClick={() => {
-                setError(null);
-                if (selectedEpisode) {
-                  loadStreamUrl(selectedEpisode);
-                }
-              }}
-              className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
-            >
-              Retry
-            </button>
+        <div className="relative z-10 w-full mt-6 px-6 md:px-12">
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-red-900/50 border border-red-600 rounded-lg p-6 text-white">
+              <div className="font-bold text-lg mb-2">Error loading episode</div>
+              <div className="text-sm mb-4">{error}</div>
+              <button
+                onClick={() => {
+                  setError(null);
+                  if (selectedEpisode) {
+                    loadStreamUrl(selectedEpisode);
+                  }
+                }}
+                className="px-6 py-3 bg-[#E50914] hover:bg-[#F40612] rounded-lg transition-colors font-medium"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Video Player - Only show if we have a stream URL and selected episode */}
+      {/* Video Player - Larger and more prominent */}
       {streamUrl && selectedEpisode && (
         <div
-          className={`relative z-10 mt-6 transition-all duration-300 ${
+          className={`relative z-10 mt-4 mb-8 transition-all duration-300 ${
             playerSize === 'small' 
-              ? 'w-full max-w-4xl mx-auto' 
+              ? 'w-full max-w-6xl mx-auto px-4' 
               : playerSize === 'medium'
-              ? 'w-full max-w-7xl mx-auto'
-              : 'w-full'
+              ? 'w-full max-w-7xl mx-auto px-4'
+              : 'w-full px-0'
           }`}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
@@ -899,87 +1057,105 @@ export default function WatchSeries() {
               preload="metadata"
             />
 
-            {/* Loading Overlay */}
+            {/* Professional Loading Overlay */}
             {loading && (
-              <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
-                <div className="text-white text-xl">Loading video...</div>
+              <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-20">
+                <div className="text-center">
+                  <Loader2 className="h-12 w-12 text-[#E50914] animate-spin mx-auto mb-4" />
+                  <div className="text-white text-lg font-medium">Loading video...</div>
+                  <div className="text-gray-400 text-sm mt-2">Please wait</div>
+                </div>
               </div>
             )}
 
-            {/* Play/Pause Button Overlay */}
+            {/* Enhanced Play/Pause Button Overlay - Larger and more prominent */}
             {showControls && !isPlaying && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-md z-10">
                 <button
                   onClick={togglePlay}
-                  className="bg-white/20 hover:bg-white/30 rounded-full p-6 transition-all transform hover:scale-110"
+                  className="bg-[#E50914]/90 hover:bg-[#E50914] backdrop-blur-md rounded-full p-10 transition-all transform hover:scale-110 shadow-2xl border-4 border-white/30 hover:border-white/50"
+                  aria-label="Play"
                 >
-                  <Play className="h-16 w-16 text-white" fill="currentColor" />
+                  <Play className="h-24 w-24 text-white" fill="currentColor" />
                 </button>
               </div>
             )}
 
-            {/* Bottom Controls Bar */}
+            {/* Professional Bottom Controls Bar */}
             <div
-              className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent transition-opacity duration-300 ${
-                showControls ? 'opacity-100' : 'opacity-0'
+              className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent backdrop-blur-sm transition-opacity duration-300 ${
+                showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
             >
-              {/* Progress Bar */}
-              <div className="px-4 pt-2">
-                <input
-                  type="range"
-                  min="0"
-                  max={duration || 100}
-                  value={progress}
-                  onChange={handleSeek}
-                  className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-600 hover:accent-red-500 transition-colors"
-                  style={{
-                    background: `linear-gradient(to right, #E50914 0%, #E50914 ${(progress / (duration || 1)) * 100}%, #4B5563 ${(progress / (duration || 1)) * 100}%, #4B5563 100%)`
-                  }}
-                />
-              </div>
-
-              {/* Control Buttons */}
-              <div className="px-4 pb-4 flex items-center gap-4">
-                <button
-                  onClick={togglePlay}
-                  className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
-                  aria-label={isPlaying ? 'Pause' : 'Play'}
-                >
-                  {isPlaying ? (
-                    <Pause className="h-6 w-6" fill="currentColor" />
-                  ) : (
-                    <Play className="h-6 w-6" fill="currentColor" />
-                  )}
-                </button>
-
-                {/* Volume Control */}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={toggleMute}
-                    className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
-                    aria-label={isMuted ? 'Unmute' : 'Mute'}
-                  >
-                    {isMuted || volume === 0 ? (
-                      <VolumeX className="h-5 w-5" />
-                    ) : (
-                      <Volume2 className="h-5 w-5" />
-                    )}
-                  </button>
+              {/* Progress Bar with Hover Time */}
+              <div className="px-6 pt-3 pb-2">
+                <div className="relative">
+                  <div className="absolute inset-0 h-1.5 bg-white/20 rounded-full" />
+                  <div 
+                    className="absolute inset-y-0 left-0 h-1.5 bg-[#E50914] rounded-full transition-all duration-150"
+                    style={{ width: `${(progress / (duration || 1)) * 100}%` }}
+                  />
                   <input
                     type="range"
                     min="0"
-                    max="1"
-                    step="0.01"
-                    value={isMuted ? 0 : volume}
-                    onChange={handleVolumeChange}
-                    className="w-24 h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-600"
+                    max={duration || 100}
+                    value={progress}
+                    onChange={handleSeek}
+                    className="absolute inset-0 w-full h-1.5 opacity-0 cursor-pointer z-10"
                   />
                 </div>
+              </div>
 
-                {/* Time Display */}
-                <div className="text-white text-sm font-mono ml-2">
-                  {formatTime(progress)} / {formatTime(duration)}
+              {/* Enhanced Control Buttons - Larger and clearer */}
+              <div className="px-6 pb-6 flex items-center gap-4">
+                <button
+                  onClick={togglePlay}
+                  className="text-white hover:text-white transition-all p-3 rounded-full hover:bg-white/25 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30"
+                  aria-label={isPlaying ? 'Pause' : 'Play'}
+                  title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+                >
+                  {isPlaying ? (
+                    <Pause className="h-7 w-7" fill="currentColor" />
+                  ) : (
+                    <Play className="h-7 w-7" fill="currentColor" />
+                  )}
+                </button>
+
+                {/* Enhanced Volume Control */}
+                <div className="flex items-center gap-2 group">
+                  <button
+                    onClick={toggleMute}
+                    className="text-white hover:text-white transition-all p-3 rounded-full hover:bg-white/25 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30"
+                    aria-label={isMuted ? 'Unmute' : 'Mute'}
+                    title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
+                  >
+                    {isMuted || volume === 0 ? (
+                      <VolumeX className="h-6 w-6" />
+                    ) : (
+                      <Volume2 className="h-6 w-6" />
+                    )}
+                  </button>
+                  <div className="w-0 group-hover:w-28 overflow-hidden transition-all duration-300">
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={isMuted ? 0 : volume}
+                      onChange={handleVolumeChange}
+                      className="w-28 h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[#E50914]"
+                      style={{
+                        background: `linear-gradient(to right, #E50914 0%, #E50914 ${(isMuted ? 0 : volume) * 100}%, rgba(255,255,255,0.2) ${(isMuted ? 0 : volume) * 100}%, rgba(255,255,255,0.2) 100%)`
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Enhanced Time Display */}
+                <div className="text-white text-base font-semibold ml-2 font-mono tracking-wide">
+                  <span className="text-white">{formatTime(progress)}</span>
+                  <span className="text-white/50 mx-1.5">/</span>
+                  <span className="text-white/70">{formatTime(duration)}</span>
                 </div>
 
                 {/* Right Side Controls */}
@@ -1011,43 +1187,76 @@ export default function WatchSeries() {
                                   e.stopPropagation();
                                   setShowAudioMenu(false);
                                   
-                                  // Jellyfin's HLS doesn't expose multiple audio tracks in the manifest
-                                  // So we need to reload the stream with the selected audio track
-                                  // Preserve playback state to make it feel seamless
+                                  // CRITICAL: Jellyfin does NOT support live audio switching on an active stream
+                                  // We MUST stop playback, destroy the HLS instance, and reload with AudioStreamIndex
                                   const wasPlaying = isPlaying;
                                   const currentTime = videoRef.current?.currentTime || 0;
                                   
-                                  setSelectedAudioTrack(index);
-                                  console.log('[WatchSeries] Switching audio track (will reload stream):', {
+                                  console.log('[WatchSeries] Switching audio track - stopping playback and reloading stream:', {
                                     arrayIndex: index,
                                     jellyfinIndex: track.index,
                                     track: track.name,
+                                    currentTime,
+                                    wasPlaying,
                                   });
                                   
-                                  // Reload stream with new audio track using Jellyfin's /hls endpoint
+                                  // Step 1: Stop current playback
+                                  if (videoRef.current) {
+                                    videoRef.current.pause();
+                                    videoRef.current.currentTime = 0; // Reset to prevent buffering issues
+                                  }
+                                  
+                                  // Step 2: Destroy existing HLS instance
+                                  if (hlsRef.current) {
+                                    console.log('[WatchSeries] Destroying existing HLS instance');
+                                    hlsRef.current.destroy();
+                                    hlsRef.current = null;
+                                  }
+                                  
+                                  // Step 3: Clear video source
+                                  if (videoRef.current) {
+                                    videoRef.current.src = '';
+                                    videoRef.current.load(); // Force reload
+                                  }
+                                  
+                                  // Step 4: Update selected track
+                                  setSelectedAudioTrack(index);
+                                  
+                                  // Step 5: Load new stream URL with AudioStreamIndex
                                   if (selectedEpisode) {
-                                    // Pause video during reload
-                                    if (videoRef.current && wasPlaying) {
-                                      videoRef.current.pause();
-                                    }
+                                    // Clear stream URL first to trigger re-initialization
+                                    setStreamUrl(null);
                                     
+                                    // Load new stream with audio track parameter
+                                    // This will generate a new Jellyfin URL with AudioStreamIndex={track.index}
                                     await loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
                                     
-                                    // Restore playback position and resume after a brief delay
-                                    if (videoRef.current) {
-                                      setTimeout(() => {
-                                        if (videoRef.current) {
-                                          videoRef.current.currentTime = currentTime;
-                                          if (wasPlaying) {
-                                            videoRef.current.play().catch((err: any) => {
-                                              console.error('[WatchSeries] Failed to resume playback:', err);
-                                            });
-                                          }
+                                    // Step 6: Wait for player to initialize, then restore position and resume
+                                    // The useEffect will handle player initialization when streamUrl changes
+                                    setTimeout(() => {
+                                      if (videoRef.current && videoRef.current.readyState >= 2) {
+                                        videoRef.current.currentTime = currentTime;
+                                        if (wasPlaying) {
+                                          videoRef.current.play().catch((err: any) => {
+                                            console.error('[WatchSeries] Failed to resume playback:', err);
+                                          });
                                         }
-                                      }, 500);
-                                    }
-                                    
-                                    toast.success(`Switched to ${track.name}`);
+                                        toast.success(`Switched to ${track.name}`);
+                                      } else {
+                                        // If video not ready, wait a bit more
+                                        setTimeout(() => {
+                                          if (videoRef.current) {
+                                            videoRef.current.currentTime = currentTime;
+                                            if (wasPlaying) {
+                                              videoRef.current.play().catch((err: any) => {
+                                                console.error('[WatchSeries] Failed to resume playback:', err);
+                                              });
+                                            }
+                                            toast.success(`Switched to ${track.name}`);
+                                          }
+                                        }, 1000);
+                                      }
+                                    }, 1000);
                                   }
                                   
                                   // Skip the old HLS.js audio track switching code since Jellyfin doesn't support it
@@ -1236,23 +1445,15 @@ export default function WatchSeries() {
                     </svg>
                   </button>
                   <button
-                    onClick={togglePlayerSize}
-                    className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
-                    aria-label="Toggle player size"
-                    title={
-                      playerSize === 'small' 
-                        ? 'Medium' 
-                        : playerSize === 'medium' 
-                        ? 'Fullscreen' 
-                        : 'Small'
-                    }
+                    onClick={toggleFullscreen}
+                    className="text-white hover:text-white transition-all p-3 rounded-full hover:bg-white/25 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30"
+                    aria-label="Toggle fullscreen"
+                    title="Fullscreen (F)"
                   >
-                    {playerSize === 'small' ? (
-                      <Square className="h-5 w-5" />
-                    ) : playerSize === 'medium' ? (
-                      <Maximize className="h-5 w-5" />
+                    {document.fullscreenElement ? (
+                      <Minimize2 className="h-6 w-6" />
                     ) : (
-                      <Minimize2 className="h-5 w-5" />
+                      <Maximize className="h-6 w-6" />
                     )}
                   </button>
                 </div>
@@ -1262,28 +1463,33 @@ export default function WatchSeries() {
         </div>
       )}
 
-      {/* Series Info */}
-      <div className="mt-6 px-4 text-white">
-        <h1 className="text-3xl font-bold mb-2">{series.title}</h1>
-        <div className="flex items-center gap-4 mb-4">
-          <span>{series.year}</span>
-          <span>•</span>
-          <span>⭐ {series.rating.toFixed(1)}</span>
+      {/* Series Info Below Player - Enhanced layout */}
+      {streamUrl && selectedEpisode && (
+        <div className="relative z-10 mt-12 px-6 md:px-12 pb-12">
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-8">
+              <div className="flex flex-wrap gap-3 mb-6">
+                {series.genres.map((genre) => (
+                  <span
+                    key={genre}
+                    className="px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+                  >
+                    {genre}
+                  </span>
+                ))}
+              </div>
+              {series.overview && (
+                <div className="mt-6">
+                  <h2 className="text-2xl font-bold text-white mb-4">About</h2>
+                  <p className="text-gray-200 leading-relaxed text-lg max-w-4xl">
+                    {series.overview}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2 mb-4">
-          {series.genres.map((genre) => (
-            <span
-              key={genre}
-              className="px-2 py-1 bg-white/20 rounded text-sm"
-            >
-              {genre}
-            </span>
-          ))}
-        </div>
-        {series.overview && (
-          <p className="text-gray-300 max-w-3xl">{series.overview}</p>
-        )}
-      </div>
+      )}
     </div>
   );
 }
