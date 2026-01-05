@@ -910,7 +910,7 @@ export const proxyStream = async (req: Request, res: Response) => {
       // The AudioStreamIndex parameter on master.m3u8 doesn't work - we need to use it on the variant playlist
       // So we request master.m3u8 normally, then rewrite the variant playlist URL to include AudioStreamIndex
       // The segments will then use AudioStreamIndex from the variant playlist
-      if (audioStreamIndex !== null) {
+      if (audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
         // Add AudioStreamIndex to urlParams for master.m3u8
         // Even though it doesn't directly affect master.m3u8, it will be preserved in rewritten URLs
         urlParams.append('AudioStreamIndex', audioStreamIndex.toString());
