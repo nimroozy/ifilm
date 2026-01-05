@@ -688,81 +688,91 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
     }
     
-    try {
-      // Use userId endpoint to get item with user context
-      const usersResponse = await axios.get(`${serverUrl}/Users`, {
-        headers: { 'X-Emby-Token': userToken },
-      });
-      const userId = usersResponse.data?.[0]?.Id || usersResponse.data?.Items?.[0]?.Id;
+    // Function to find audioStreamIndex from audioTrackIndex
+    const findAudioStreamIndex = async () => {
+      if (audioTrackIndex === null || audioStreamIndex !== null) {
+        return; // Already set or no audio track requested
+      }
       
-      if (userId) {
-        const itemResponse = await axios.get(`${serverUrl}/Users/${userId}/Items/${id}`, {
+      try {
+        // Use userId endpoint to get item with user context
+        const usersResponse = await axios.get(`${serverUrl}/Users`, {
           headers: { 'X-Emby-Token': userToken },
         });
+        const userId = usersResponse.data?.[0]?.Id || usersResponse.data?.Items?.[0]?.Id;
         
-        if (itemResponse.data && itemResponse.data.MediaSources && itemResponse.data.MediaSources.length > 0) {
-          // If mediaSourceId is provided in query, use it; otherwise use first MediaSource
-          let selectedMediaSource: any = null;
-          if (requestedMediaSourceId) {
-            const foundSource = itemResponse.data.MediaSources.find((ms: any) => ms.Id === requestedMediaSourceId);
-            if (foundSource) {
-              selectedMediaSource = foundSource;
-              mediaSourceId = foundSource.Id;
-              console.log('[proxyStream] Using requested media source ID:', mediaSourceId);
+        if (userId) {
+          const itemResponse = await axios.get(`${serverUrl}/Users/${userId}/Items/${id}`, {
+            headers: { 'X-Emby-Token': userToken },
+          });
+          
+          if (itemResponse.data && itemResponse.data.MediaSources && itemResponse.data.MediaSources.length > 0) {
+            // If mediaSourceId is provided in query, use it; otherwise use first MediaSource
+            let selectedMediaSource: any = null;
+            if (requestedMediaSourceId) {
+              const foundSource = itemResponse.data.MediaSources.find((ms: any) => ms.Id === requestedMediaSourceId);
+              if (foundSource) {
+                selectedMediaSource = foundSource;
+                mediaSourceId = foundSource.Id;
+                console.log('[proxyStream] Using requested media source ID:', mediaSourceId);
+              } else {
+                selectedMediaSource = itemResponse.data.MediaSources[0];
+                mediaSourceId = selectedMediaSource.Id;
+                console.log('[proxyStream] Requested media source not found, using first:', mediaSourceId);
+              }
             } else {
               selectedMediaSource = itemResponse.data.MediaSources[0];
               mediaSourceId = selectedMediaSource.Id;
-              console.log('[proxyStream] Requested media source not found, using first:', mediaSourceId);
+              console.log('[proxyStream] Got media source ID:', mediaSourceId);
             }
-          } else {
-            selectedMediaSource = itemResponse.data.MediaSources[0];
-            mediaSourceId = selectedMediaSource.Id;
-            console.log('[proxyStream] Got media source ID:', mediaSourceId);
-          }
-          
-          // If audioTrackIndex is specified, use it directly as Jellyfin MediaStream Index
-          // The frontend now passes the track's 'index' property (Jellyfin MediaStream Index), not array index
-          if (audioTrackIndex !== null && selectedMediaSource.MediaStreams) {
-            const audioStreams = selectedMediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
-            console.log('[proxyStream] Looking for audio track:', {
-              requestedIndex: audioTrackIndex,
-              availableAudioStreams: audioStreams.map((s: any) => ({
-                Index: s.Index,
-                Language: s.Language || s.LanguageTag,
-                Codec: s.Codec,
-              })),
-            });
             
-            // Check if the requested index exists in the audio streams
-            const matchingStream = audioStreams.find((stream: any) => stream.Index === audioTrackIndex);
-            if (matchingStream) {
-              // Use the Index directly (frontend already passed the correct Jellyfin MediaStream Index)
-              audioStreamIndex = audioTrackIndex;
-              console.log('[proxyStream] ✅ Audio track found and will be used:', {
-                jellyfinIndex: audioStreamIndex,
-                language: matchingStream.Language || matchingStream.LanguageTag,
-                codec: matchingStream.Codec,
-                name: matchingStream.DisplayTitle || matchingStream.Title,
+            // If audioTrackIndex is specified, use it directly as Jellyfin MediaStream Index
+            // The frontend now passes the track's 'index' property (Jellyfin MediaStream Index), not array index
+            if (audioTrackIndex !== null && selectedMediaSource.MediaStreams) {
+              const audioStreams = selectedMediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
+              console.log('[proxyStream] Looking for audio track:', {
+                requestedIndex: audioTrackIndex,
+                availableAudioStreams: audioStreams.map((s: any) => ({
+                  Index: s.Index,
+                  Language: s.Language || s.LanguageTag,
+                  Codec: s.Codec,
+                })),
               });
-            } else {
-              console.warn('[proxyStream] ❌ AudioStreamIndex not found:', {
-                requested: audioTrackIndex,
-                availableIndices: audioStreams.map((s: any) => s.Index).join(', '),
-                allStreams: audioStreams.map((s: any) => ({ Index: s.Index, Type: s.Type })),
+              
+              // Check if the requested index exists in the audio streams
+              const matchingStream = audioStreams.find((stream: any) => stream.Index === audioTrackIndex);
+              if (matchingStream) {
+                // Use the Index directly (frontend already passed the correct Jellyfin MediaStream Index)
+                audioStreamIndex = audioTrackIndex;
+                console.log('[proxyStream] ✅ Audio track found and will be used:', {
+                  jellyfinIndex: audioStreamIndex,
+                  language: matchingStream.Language || matchingStream.LanguageTag,
+                  codec: matchingStream.Codec,
+                  name: matchingStream.DisplayTitle || matchingStream.Title,
+                });
+              } else {
+                console.warn('[proxyStream] ❌ AudioStreamIndex not found:', {
+                  requested: audioTrackIndex,
+                  availableIndices: audioStreams.map((s: any) => s.Index).join(', '),
+                  allStreams: audioStreams.map((s: any) => ({ Index: s.Index, Type: s.Type })),
+                });
+              }
+            } else if (audioTrackIndex !== null) {
+              console.warn('[proxyStream] Audio track requested but no MediaStreams available:', {
+                audioTrackIndex,
+                hasMediaSources: !!selectedMediaSource,
+                hasMediaStreams: !!selectedMediaSource?.MediaStreams,
               });
             }
-          } else if (audioTrackIndex !== null) {
-            console.warn('[proxyStream] Audio track requested but no MediaStreams available:', {
-              audioTrackIndex,
-              hasMediaSources: !!selectedMediaSource,
-              hasMediaStreams: !!selectedMediaSource?.MediaStreams,
-            });
           }
         }
+      } catch (itemError: any) {
+        console.warn('[proxyStream] Failed to get media source ID, will try without it:', itemError.message);
       }
-    } catch (itemError: any) {
-      console.warn('[proxyStream] Failed to get media source ID, will try without it:', itemError.message);
-    }
+    };
+    
+    // Find audioStreamIndex if audioTrackIndex is set
+    await findAudioStreamIndex();
     
     // If mediaSourceId was provided in query but not found, use it anyway
     if (requestedMediaSourceId && !mediaSourceId) {
