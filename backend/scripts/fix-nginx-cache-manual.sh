@@ -9,6 +9,9 @@ TMP_CONFIG=$(mktemp)
 
 echo "🔧 Fixing NGINX cache configuration..."
 
+# Backup current config
+sudo cp "$NGINX_CONFIG" "${NGINX_CONFIG}.bak.$(date +%s)"
+
 # Copy current config
 sudo cp "$NGINX_CONFIG" "$TMP_CONFIG"
 
@@ -47,14 +50,14 @@ echo ""
 echo "--- Images location:"
 grep -A 10 "location ~\* \^\/api\/media\/images" "$TMP_CONFIG" | grep -E "proxy_cache|proxy_buffering" | head -5
 
+# Copy to actual config first
+sudo cp "$TMP_CONFIG" "$NGINX_CONFIG"
+
 # Test config
 echo ""
 echo "🧪 Testing NGINX configuration..."
-if sudo nginx -t -c /dev/stdin < "$TMP_CONFIG" 2>&1 | grep -q "successful"; then
+if sudo nginx -t; then
     echo "✅ Config test passed"
-    # Copy to actual config
-    sudo cp "$TMP_CONFIG" "$NGINX_CONFIG"
-    echo "✅ Config updated"
     
     # Reload NGINX
     if sudo systemctl reload nginx; then
@@ -65,8 +68,8 @@ if sudo nginx -t -c /dev/stdin < "$TMP_CONFIG" 2>&1 | grep -q "successful"; then
     fi
 else
     echo "❌ Config test failed"
-    echo "Config saved to: $TMP_CONFIG"
-    sudo nginx -t -c /dev/stdin < "$TMP_CONFIG"
+    echo "Restoring original config..."
+    sudo cp "${NGINX_CONFIG}.bak" "$NGINX_CONFIG" 2>/dev/null || echo "No backup found"
     exit 1
 fi
 
