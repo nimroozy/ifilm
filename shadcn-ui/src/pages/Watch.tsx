@@ -303,13 +303,26 @@ export default function Watch() {
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('HLS manifest parsed, ready to play');
         console.log('[Watch] Available quality levels:', hls.levels?.length || 0);
+        console.log('[Watch] Available audio tracks:', hls.audioTracks?.length || 0);
+        
+        // Log audio tracks for debugging
+        if (hls.audioTracks && hls.audioTracks.length > 0) {
+          console.log('[Watch] HLS audio tracks:', hls.audioTracks.map((track: any, idx: number) => ({
+            index: idx,
+            name: track.name,
+            lang: track.lang,
+            groupId: track.groupId,
+          })));
+        } else {
+          console.warn('[Watch] No HLS audio tracks available - HLS.js may not support audio track switching for this stream');
+        }
         
         // Set audio track if one is selected
-        if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
+        if (selectedAudioTrack !== null && hls.audioTracks && hls.audioTracks.length > 0) {
           try {
             const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
             hls.audioTrack = trackIndex;
-            console.log('[Watch] Set audio track to index:', trackIndex);
+            console.log('[Watch] Set audio track to index:', trackIndex, hls.audioTracks[trackIndex]);
           } catch (error) {
             console.warn('[Watch] Failed to set audio track:', error);
           }
@@ -323,8 +336,8 @@ export default function Watch() {
       
       // Listen for audio track changes
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
-        console.log('[Watch] Audio tracks updated:', hls.audioTracks.length);
-        if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
+        console.log('[Watch] Audio tracks updated:', hls.audioTracks?.length || 0);
+        if (selectedAudioTrack !== null && hls.audioTracks && hls.audioTracks.length > 0) {
           try {
             const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
             hls.audioTrack = trackIndex;
@@ -337,7 +350,7 @@ export default function Watch() {
       
       // Listen for audio track switching
       hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (event, data) => {
-        console.log('[Watch] Audio track switched:', data.id, hls.audioTracks[data.id]);
+        console.log('[Watch] Audio track switched:', data.id, hls.audioTracks?.[data.id]);
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {

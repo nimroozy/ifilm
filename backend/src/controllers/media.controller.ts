@@ -553,6 +553,8 @@ export const proxyStream = async (req: Request, res: Response) => {
     const requestedMediaSourceId = req.query.mediaSourceId as string | undefined;
     
     let mediaSourceId: string | null = null;
+    let audioStreamIndex: number | null = null;
+    
     try {
       // Use userId endpoint to get item with user context
       const usersResponse = await axios.get(`${serverUrl}/Users`, {
@@ -567,18 +569,39 @@ export const proxyStream = async (req: Request, res: Response) => {
         
         if (itemResponse.data && itemResponse.data.MediaSources && itemResponse.data.MediaSources.length > 0) {
           // If mediaSourceId is provided in query, use it; otherwise use first MediaSource
+          let selectedMediaSource: any = null;
           if (requestedMediaSourceId) {
             const foundSource = itemResponse.data.MediaSources.find((ms: any) => ms.Id === requestedMediaSourceId);
             if (foundSource) {
+              selectedMediaSource = foundSource;
               mediaSourceId = foundSource.Id;
               console.log('[proxyStream] Using requested media source ID:', mediaSourceId);
             } else {
-              mediaSourceId = itemResponse.data.MediaSources[0].Id;
+              selectedMediaSource = itemResponse.data.MediaSources[0];
+              mediaSourceId = selectedMediaSource.Id;
               console.log('[proxyStream] Requested media source not found, using first:', mediaSourceId);
             }
           } else {
-            mediaSourceId = itemResponse.data.MediaSources[0].Id;
+            selectedMediaSource = itemResponse.data.MediaSources[0];
+            mediaSourceId = selectedMediaSource.Id;
             console.log('[proxyStream] Got media source ID:', mediaSourceId);
+          }
+          
+          // If audioTrackIndex is specified, find the corresponding MediaStream Index
+          if (audioTrackIndex !== null && selectedMediaSource.MediaStreams) {
+            const audioStreams = selectedMediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
+            if (audioStreams.length > 0 && audioTrackIndex >= 0 && audioTrackIndex < audioStreams.length) {
+              // Use the Index from the MediaStream (this is what Jellyfin expects)
+              audioStreamIndex = audioStreams[audioTrackIndex].Index;
+              console.log('[proxyStream] Audio track requested:', {
+                frontendIndex: audioTrackIndex,
+                jellyfinIndex: audioStreamIndex,
+                language: audioStreams[audioTrackIndex].Language || audioStreams[audioTrackIndex].LanguageTag,
+                codec: audioStreams[audioTrackIndex].Codec,
+              });
+            } else {
+              console.warn('[proxyStream] Invalid audioTrackIndex:', audioTrackIndex, 'Available tracks:', audioStreams.length);
+            }
           }
         }
       }
@@ -601,6 +624,11 @@ export const proxyStream = async (req: Request, res: Response) => {
     if (mediaSourceId) {
       urlParams.append('MediaSourceId', mediaSourceId);
     }
+    // Add AudioStreamIndex if specified (Jellyfin uses this to select audio track)
+    if (audioStreamIndex !== null) {
+      urlParams.append('AudioStreamIndex', audioStreamIndex.toString());
+      console.log('[proxyStream] Adding AudioStreamIndex to request:', audioStreamIndex);
+    }
     
     if (filePath) {
       // For HLS segments/variants: /Videos/{id}/hls/{playlistId}/stream.m3u8 or segment files
@@ -620,9 +648,13 @@ export const proxyStream = async (req: Request, res: Response) => {
         if (mediaSourceId) {
           segmentParams.append('MediaSourceId', mediaSourceId);
         }
+        // Include AudioStreamIndex for segments too (needed for correct audio track)
+        if (audioStreamIndex !== null) {
+          segmentParams.append('AudioStreamIndex', audioStreamIndex.toString());
+        }
         targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${segmentParams.toString()}`;
       } else {
-        // For playlist files (.m3u8), include MediaSourceId if available
+        // For playlist files (.m3u8), include MediaSourceId and AudioStreamIndex if available
         targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${urlParams.toString()}`;
       }
     } else {
