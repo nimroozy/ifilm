@@ -308,6 +308,7 @@ export const getStreamUrl = async (req: Request, res: Response) => {
     
     if (authHeader && authHeader.startsWith('Bearer ')) {
       userToken = authHeader.substring(7);
+      console.log('[getStreamUrl] Using Bearer token for authentication');
     } else {
       // Fallback: use API key from config if no Bearer token
       const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
@@ -316,8 +317,21 @@ export const getStreamUrl = async (req: Request, res: Response) => {
         userToken = config.apiKey;
         console.log('[getStreamUrl] No Bearer token, using API key from config');
       } else {
-        return res.status(401).json({ message: 'Unauthorized - No authentication provided' });
+        console.warn('[getStreamUrl] No authentication available - continuing without audio tracks');
+        // Don't return error - stream will still work, just without audio track info
+        userToken = null;
       }
+    }
+    
+    // If we still don't have a token, return stream URL without audio tracks
+    if (!userToken) {
+      const proxiedUrl = `/api/media/stream/${id}/master.m3u8`;
+      return res.json({
+        streamUrl: proxiedUrl,
+        type: 'hls',
+        audioTracks: [],
+        defaultMediaSourceId: null,
+      });
     }
 
     // Get item details with MediaSources to extract audio tracks
