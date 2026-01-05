@@ -18,6 +18,8 @@ import {
   saveVolume,
   getSavedMuted,
   saveMuted,
+  saveVideoQuality,
+  getSavedVideoQuality,
 } from '@/utils/playerPreferences';
 
 interface MediaDetails {
@@ -73,6 +75,7 @@ export default function Watch() {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [videoQuality, setVideoQuality] = useState<string>('auto');
+  const [availableQualities, setAvailableQualities] = useState<Array<{ label: string; value: string; height: number }>>([]);
   const [timelineHoverTime, setTimelineHoverTime] = useState<number | null>(null);
   const [timelineHoverPosition, setTimelineHoverPosition] = useState<number>(0);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -96,6 +99,11 @@ export default function Watch() {
     }
     if (savedPrefs.playbackSpeed) {
       setPlaybackSpeed(savedPrefs.playbackSpeed);
+    }
+    // Load saved video quality preference
+    if (media?.id) {
+      const savedQuality = getSavedVideoQuality(media.id);
+      setVideoQuality(savedQuality);
     }
     const savedVolume = getSavedVolume();
     if (savedVolume !== undefined) {
@@ -588,31 +596,62 @@ export default function Watch() {
   };
 
   const handleQualityChange = (quality: string) => {
+    console.log('[Watch] Quality change requested:', quality);
     setVideoQuality(quality);
     setShowSettingsMenu(false);
-    // Note: Quality switching requires HLS level switching, which is handled by HLS.js automatically
-    // This is mainly for UI feedback
+    if (media?.id) {
+      saveVideoQuality(media.id, quality); // Save preference
+    }
+    
     if (hlsRef.current && hlsRef.current.levels && hlsRef.current.levels.length > 0) {
-      // Find the level that matches the requested quality
       const levels = hlsRef.current.levels;
       let targetLevel = -1;
       
-      if (quality === '1080p') {
-        targetLevel = levels.findIndex((level: any) => level.height === 1080) || levels.length - 1;
-      } else if (quality === '720p') {
-        targetLevel = levels.findIndex((level: any) => level.height === 720) || Math.floor(levels.length / 2);
-      } else if (quality === '480p') {
-        targetLevel = levels.findIndex((level: any) => level.height === 480) || 0;
-      } else {
-        // Auto - let HLS.js decide
+      if (quality === 'auto') {
+        // Auto mode - let HLS.js adapt based on network speed
         targetLevel = -1;
+        console.log('[Watch] ✅ Quality set to AUTO (adaptive bitrate)');
+      } else if (quality === '1080p') {
+        targetLevel = levels.findIndex((level: any) => level.height === 1080);
+        if (targetLevel === -1) {
+          // Fallback to highest available
+          targetLevel = levels.length - 1;
+          console.warn('[Watch] 1080p not found, using highest available:', levels[targetLevel]?.height);
+        } else {
+          console.log('[Watch] ✅ Quality set to 1080p (level', targetLevel, ')');
+        }
+      } else if (quality === '720p') {
+        targetLevel = levels.findIndex((level: any) => level.height === 720);
+        if (targetLevel === -1) {
+          // Fallback to middle
+          targetLevel = Math.floor(levels.length / 2);
+          console.warn('[Watch] 720p not found, using middle quality:', levels[targetLevel]?.height);
+        } else {
+          console.log('[Watch] ✅ Quality set to 720p (level', targetLevel, ')');
+        }
+      } else if (quality === '480p') {
+        targetLevel = levels.findIndex((level: any) => level.height === 480);
+        if (targetLevel === -1) {
+          // Fallback to lowest
+          targetLevel = 0;
+          console.warn('[Watch] 480p not found, using lowest quality:', levels[targetLevel]?.height);
+        } else {
+          console.log('[Watch] ✅ Quality set to 480p (level', targetLevel, ')');
+        }
       }
       
+      // Apply the level change
       if (targetLevel >= 0 && targetLevel < levels.length) {
         hlsRef.current.currentLevel = targetLevel;
-      } else {
+        const level = levels[targetLevel];
+        toast.success(`Quality: ${level.height}p`);
+      } else if (targetLevel === -1) {
         hlsRef.current.currentLevel = -1; // Auto
+        toast.success('Quality: Auto (Adaptive)');
       }
+    } else {
+      console.warn('[Watch] ⚠️ No HLS levels available for quality switching');
+      toast.error('Quality switching not available');
     }
   };
 
@@ -1128,79 +1167,154 @@ export default function Watch() {
                                   e.stopPropagation();
                                   setShowAudioMenu(false);
                                   
-                                  // CRITICAL: Jellyfin does NOT support live audio switching on an active stream
-                                  // We MUST stop playback, destroy the HLS instance, and reload with AudioStreamIndex
+                                  // ============================================
+                                  // CRITICAL: Audio Track Switching Protocol
+                                  // ============================================
+                                  // Jellyfin does NOT support live audio switching
+                                  // We MUST: Stop → Destroy → Clear → Reload → Resume
+                                  // ============================================
+                                  
                                   const wasPlaying = isPlaying;
                                   const currentTime = videoRef.current?.currentTime || 0;
+                                  const jellyfinIndex = track.index; // Jellyfin MediaStream Index
                                   
-                                  console.log('[Watch] Switching audio track - stopping playback and reloading stream:', {
+                                  console.log('🔴 [AUDIO SWITCH] ========== STARTING ==========');
+                                  console.log('🔴 [AUDIO SWITCH] Request:', {
                                     arrayIndex: index,
-                                    jellyfinIndex: track.index,
-                                    track: track.name,
+                                    jellyfinIndex: jellyfinIndex,
+                                    trackName: track.name,
+                                    trackLanguage: track.language,
+                                    mediaSourceId: track.mediaSourceId,
                                     currentTime,
                                     wasPlaying,
                                   });
                                   
-                                  // Step 1: Stop current playback
+                                  // ============================================
+                                  // STEP 1: Stop current playback
+                                  // ============================================
                                   if (videoRef.current) {
+                                    console.log('🔴 [AUDIO SWITCH] Step 1: Stopping playback');
                                     videoRef.current.pause();
                                     videoRef.current.currentTime = 0; // Reset to prevent buffering issues
+                                    console.log('🔴 [AUDIO SWITCH] ✅ Playback stopped, video paused, time reset to 0');
+                                  } else {
+                                    console.error('🔴 [AUDIO SWITCH] ❌ videoRef.current is null!');
                                   }
                                   
-                                  // Step 2: Destroy existing HLS instance
+                                  // ============================================
+                                  // STEP 2: Destroy existing HLS instance
+                                  // ============================================
                                   if (hlsRef.current) {
-                                    console.log('[Watch] Destroying existing HLS instance');
-                                    hlsRef.current.destroy();
-                                    hlsRef.current = null;
+                                    console.log('🔴 [AUDIO SWITCH] Step 2: Destroying HLS instance');
+                                    try {
+                                      hlsRef.current.destroy();
+                                      hlsRef.current = null;
+                                      console.log('🔴 [AUDIO SWITCH] ✅ HLS instance destroyed');
+                                    } catch (err) {
+                                      console.error('🔴 [AUDIO SWITCH] ❌ Error destroying HLS:', err);
+                                    }
+                                  } else {
+                                    console.log('🔴 [AUDIO SWITCH] ⚠️ No HLS instance to destroy (may be native HLS)');
                                   }
                                   
-                                  // Step 3: Clear video source
+                                  // ============================================
+                                  // STEP 3: Clear video source
+                                  // ============================================
                                   if (videoRef.current) {
+                                    console.log('🔴 [AUDIO SWITCH] Step 3: Clearing video source');
+                                    const oldSrc = videoRef.current.src;
                                     videoRef.current.src = '';
                                     videoRef.current.load(); // Force reload
+                                    console.log('🔴 [AUDIO SWITCH] ✅ Video source cleared (was:', oldSrc, ')');
+                                  } else {
+                                    console.error('🔴 [AUDIO SWITCH] ❌ videoRef.current is null in Step 3!');
                                   }
                                   
-                                  // Step 4: Update selected track and save preference
+                                  // ============================================
+                                  // STEP 4: Update UI state and save preference
+                                  // ============================================
+                                  console.log('🔴 [AUDIO SWITCH] Step 4: Updating UI state');
                                   setSelectedAudioTrack(index);
                                   if (media?.id) {
                                     saveAudioTrack(media.id, index);
+                                    console.log('🔴 [AUDIO SWITCH] ✅ UI state updated, preference saved');
                                   }
                                   
-                                  // Step 5: Load new stream URL with AudioStreamIndex
+                                  // ============================================
+                                  // STEP 5: Load new stream URL with AudioStreamIndex
+                                  // ============================================
                                   if (media?.id) {
+                                    console.log('🔴 [AUDIO SWITCH] Step 5: Loading new stream with AudioStreamIndex');
+                                    console.log('🔴 [AUDIO SWITCH] Parameters:', {
+                                      mediaId: media.id,
+                                      audioTrackArrayIndex: index,
+                                      audioTrackJellyfinIndex: jellyfinIndex,
+                                      mediaSourceId: track.mediaSourceId,
+                                    });
+                                    
                                     // Clear stream URL first to trigger re-initialization
                                     setStreamUrl(null);
+                                    console.log('🔴 [AUDIO SWITCH] ✅ Stream URL cleared, will trigger re-init');
                                     
                                     // Load new stream with audio track parameter
-                                    // This will generate a new Jellyfin URL with AudioStreamIndex={track.index}
+                                    // This will generate: /Videos/{id}/master.m3u8?AudioStreamIndex={jellyfinIndex}&VideoStreamIndex=0&SubtitleStreamIndex=-1
                                     await loadStreamUrl(media.id, index, track.mediaSourceId);
+                                    console.log('🔴 [AUDIO SWITCH] ✅ loadStreamUrl completed');
                                     
-                                    // Step 6: Wait for player to initialize, then restore position and resume
-                                    // The useEffect will handle player initialization when streamUrl changes
-                                    setTimeout(() => {
+                                    // ============================================
+                                    // STEP 6: Wait for player to initialize, then restore position and resume
+                                    // ============================================
+                                    console.log('🔴 [AUDIO SWITCH] Step 6: Waiting for player initialization...');
+                                    
+                                    // Wait for video to be ready
+                                    const waitForReady = () => {
                                       if (videoRef.current && videoRef.current.readyState >= 2) {
+                                        console.log('🔴 [AUDIO SWITCH] ✅ Video ready, restoring position:', currentTime);
                                         videoRef.current.currentTime = currentTime;
+                                        
                                         if (wasPlaying) {
-                                          videoRef.current.play().catch((err: any) => {
-                                            console.error('[Watch] Failed to resume playback:', err);
-                                          });
+                                          console.log('🔴 [AUDIO SWITCH] Resuming playback...');
+                                          videoRef.current.play()
+                                            .then(() => {
+                                              console.log('🔴 [AUDIO SWITCH] ✅ Playback resumed successfully');
+                                              toast.success(`Switched to ${track.name}`);
+                                              console.log('🔴 [AUDIO SWITCH] ========== COMPLETE ==========');
+                                            })
+                                            .catch((err: any) => {
+                                              console.error('🔴 [AUDIO SWITCH] ❌ Failed to resume playback:', err);
+                                              toast.error('Failed to resume playback');
+                                            });
+                                        } else {
+                                          console.log('🔴 [AUDIO SWITCH] ✅ Position restored (was paused)');
+                                          toast.success(`Switched to ${track.name}`);
+                                          console.log('🔴 [AUDIO SWITCH] ========== COMPLETE ==========');
                                         }
-                                        toast.success(`Switched to ${track.name}`);
                                       } else {
-                                        // If video not ready, wait a bit more
-                                        setTimeout(() => {
-                                          if (videoRef.current) {
-                                            videoRef.current.currentTime = currentTime;
-                                            if (wasPlaying) {
-                                              videoRef.current.play().catch((err: any) => {
-                                                console.error('[Watch] Failed to resume playback:', err);
-                                              });
-                                            }
-                                            toast.success(`Switched to ${track.name}`);
-                                          }
-                                        }, 1000);
+                                        // Retry after a short delay
+                                        setTimeout(waitForReady, 200);
                                       }
-                                    }, 1000);
+                                    };
+                                    
+                                    // Start waiting after a brief delay to allow stream URL to be set
+                                    setTimeout(waitForReady, 500);
+                                    
+                                    // Fallback timeout
+                                    setTimeout(() => {
+                                      if (videoRef.current && videoRef.current.readyState < 2) {
+                                        console.warn('🔴 [AUDIO SWITCH] ⚠️ Video not ready after 3 seconds, forcing restore');
+                                        if (videoRef.current) {
+                                          videoRef.current.currentTime = currentTime;
+                                          if (wasPlaying) {
+                                            videoRef.current.play().catch((err: any) => {
+                                              console.error('🔴 [AUDIO SWITCH] ❌ Failed to resume (fallback):', err);
+                                            });
+                                          }
+                                          toast.success(`Switched to ${track.name}`);
+                                        }
+                                      }
+                                    }, 3000);
+                                  } else {
+                                    console.error('🔴 [AUDIO SWITCH] ❌ media?.id is null!');
                                   }
                                   
                                   // Skip the old HLS.js audio track switching code since Jellyfin doesn't support it
@@ -1346,22 +1460,25 @@ export default function Watch() {
                             </div>
                           </div>
 
-                          {/* Video Quality */}
-                          {hlsRef.current && hlsRef.current.levels && hlsRef.current.levels.length > 1 && (
+                          {/* Video Quality - Dynamic based on available levels */}
+                          {availableQualities.length > 1 && (
                             <div className="mb-4">
-                              <div className="text-white text-xs font-semibold mb-2">Quality</div>
-                              <div className="space-y-1">
-                                {['auto', '1080p', '720p', '480p'].map((quality) => (
+                              <div className="text-white text-xs font-semibold mb-2 flex items-center gap-2">
+                                <Gauge className="h-4 w-4" />
+                                Quality
+                              </div>
+                              <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                                {availableQualities.map((quality) => (
                                   <button
-                                    key={quality}
-                                    onClick={() => handleQualityChange(quality)}
+                                    key={quality.value}
+                                    onClick={() => handleQualityChange(quality.value)}
                                     className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                                      videoQuality === quality
+                                      videoQuality === quality.value
                                         ? 'bg-[#E50914] text-white'
                                         : 'text-white/80 hover:bg-white/10'
                                     }`}
                                   >
-                                    {quality === 'auto' ? 'Auto (Best)' : quality}
+                                    {quality.label}
                                   </button>
                                 ))}
                               </div>

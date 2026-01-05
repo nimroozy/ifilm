@@ -108,6 +108,30 @@ export const savePlaybackSpeed = (mediaId: string, speed: number): void => {
 };
 
 /**
+ * Get saved video quality preference
+ */
+export const getSavedVideoQuality = (mediaId: string): string => {
+  try {
+    const stored = localStorage.getItem(`${STORAGE_PREFIX}${mediaId}_quality`);
+    return stored || 'auto';
+  } catch (error) {
+    console.error('[PlayerPreferences] Error reading quality:', error);
+  }
+  return 'auto';
+};
+
+/**
+ * Save video quality preference
+ */
+export const saveVideoQuality = (mediaId: string, quality: string): void => {
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}${mediaId}_quality`, quality);
+  } catch (error) {
+    console.error('[PlayerPreferences] Error saving quality:', error);
+  }
+};
+
+/**
  * Get saved volume
  */
 export const getSavedVolume = (): number => {
