@@ -591,20 +591,39 @@ export const proxyStream = async (req: Request, res: Response) => {
           // The frontend now passes the track's 'index' property (Jellyfin MediaStream Index), not array index
           if (audioTrackIndex !== null && selectedMediaSource.MediaStreams) {
             const audioStreams = selectedMediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
+            console.log('[proxyStream] Looking for audio track:', {
+              requestedIndex: audioTrackIndex,
+              availableAudioStreams: audioStreams.map((s: any) => ({
+                Index: s.Index,
+                Language: s.Language || s.LanguageTag,
+                Codec: s.Codec,
+              })),
+            });
+            
             // Check if the requested index exists in the audio streams
             const matchingStream = audioStreams.find((stream: any) => stream.Index === audioTrackIndex);
             if (matchingStream) {
               // Use the Index directly (frontend already passed the correct Jellyfin MediaStream Index)
               audioStreamIndex = audioTrackIndex;
-              console.log('[proxyStream] Audio track requested:', {
+              console.log('[proxyStream] ✅ Audio track found and will be used:', {
                 jellyfinIndex: audioStreamIndex,
                 language: matchingStream.Language || matchingStream.LanguageTag,
                 codec: matchingStream.Codec,
                 name: matchingStream.DisplayTitle || matchingStream.Title,
               });
             } else {
-              console.warn('[proxyStream] AudioStreamIndex not found:', audioTrackIndex, 'Available indices:', audioStreams.map((s: any) => s.Index).join(', '));
+              console.warn('[proxyStream] ❌ AudioStreamIndex not found:', {
+                requested: audioTrackIndex,
+                availableIndices: audioStreams.map((s: any) => s.Index).join(', '),
+                allStreams: audioStreams.map((s: any) => ({ Index: s.Index, Type: s.Type })),
+              });
             }
+          } else if (audioTrackIndex !== null) {
+            console.warn('[proxyStream] Audio track requested but no MediaStreams available:', {
+              audioTrackIndex,
+              hasMediaSources: !!selectedMediaSource,
+              hasMediaStreams: !!selectedMediaSource?.MediaStreams,
+            });
           }
         }
       }
