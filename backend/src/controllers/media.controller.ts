@@ -820,16 +820,8 @@ export const proxyStream = async (req: Request, res: Response) => {
           // Only add MediaSourceId if not from HLS playlist (it's in the playlist path)
           segmentParams.append('MediaSourceId', mediaSourceId);
         }
-        // Only include AudioStreamIndex if NOT from HLS playlist (HLS playlist segments already have correct audio)
-        if (audioStreamIndex !== null && !isFromHlsPlaylist) {
-          const audioIndex = Number(audioStreamIndex);
-          if (!isNaN(audioIndex)) {
-            segmentParams.append('AudioStreamIndex', audioIndex.toString());
-            console.log('[proxyStream] Adding AudioStreamIndex to segment request:', audioIndex);
-          }
-        }
-        
         // If this segment is from an HLS playlist and we have the playlistId, use the HLS playlist path
+        // HLS playlist segments already have correct audio, so don't add AudioStreamIndex
         if (isFromHlsPlaylist && hlsPlaylistId) {
           targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${filePath}?${segmentParams.toString()}`;
           console.log('[proxyStream] ✅ Requesting segment from HLS playlist:', {
@@ -840,11 +832,26 @@ export const proxyStream = async (req: Request, res: Response) => {
             hasPlaylistId: !!hlsPlaylistId,
           });
         } else {
+          // For non-HLS playlist segments OR if HLS playlist creation failed, ALWAYS add AudioStreamIndex
+          // This ensures audio track selection works even if HLS playlist approach doesn't work
+          if (audioStreamIndex !== null) {
+            const audioIndex = Number(audioStreamIndex);
+            if (!isNaN(audioIndex)) {
+              segmentParams.append('AudioStreamIndex', audioIndex.toString());
+              console.log('[proxyStream] Adding AudioStreamIndex to segment request (fallback):', {
+                audioIndex,
+                filePath,
+                isFromHlsPlaylist,
+                hasPlaylistId: !!hlsPlaylistId,
+              });
+            }
+          }
           if (isFromHlsPlaylist && !hlsPlaylistId) {
-            console.warn('[proxyStream] ⚠️ Segment is from HLS playlist but no playlistId available:', {
+            console.warn('[proxyStream] ⚠️ Segment is from HLS playlist but no playlistId available, using AudioStreamIndex fallback:', {
               filePath,
               isFromHlsPlaylist,
               hlsPlaylistId,
+              audioStreamIndex,
             });
           }
           targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${segmentParams.toString()}`;
