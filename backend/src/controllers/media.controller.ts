@@ -702,12 +702,10 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
     }
     
-    // Function to find audioStreamIndex from audioTrackIndex
-    const findAudioStreamIndex = async () => {
-      if (audioTrackIndex === null || audioStreamIndex !== null) {
-        return; // Already set or no audio track requested
-      }
-      
+    // Function to get mediaSourceId and find audioStreamIndex from audioTrackIndex
+    const getMediaSourceAndAudioStream = async () => {
+      // Always try to get mediaSourceId, even if no audio track is requested
+      // Jellyfin often requires MediaSourceId for master.m3u8 requests
       try {
         // Use userId endpoint to get item with user context
         const usersResponse = await axios.get(`${serverUrl}/Users`, {
@@ -740,8 +738,7 @@ export const proxyStream = async (req: Request, res: Response) => {
               console.log('[proxyStream] Got media source ID:', mediaSourceId);
             }
             
-            // If audioTrackIndex is specified, use it directly as Jellyfin MediaStream Index
-            // The frontend now passes the track's 'index' property (Jellyfin MediaStream Index), not array index
+            // If audioTrackIndex is specified, find the matching audio stream
             if (audioTrackIndex !== null && selectedMediaSource.MediaStreams) {
               const audioStreams = selectedMediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
               console.log('[proxyStream] Looking for audio track:', {
@@ -778,15 +775,43 @@ export const proxyStream = async (req: Request, res: Response) => {
                 hasMediaStreams: !!selectedMediaSource?.MediaStreams,
               });
             }
+          } else {
+            console.warn('[proxyStream] No MediaSources found in item response');
+          }
+        } else {
+          console.warn('[proxyStream] No user ID found, trying direct endpoint');
+          // Fallback: try direct endpoint
+          try {
+            const itemResponse = await axios.get(`${serverUrl}/Items/${id}`, {
+              headers: { 'X-Emby-Token': userToken },
+            });
+            if (itemResponse.data && itemResponse.data.MediaSources && itemResponse.data.MediaSources.length > 0) {
+              mediaSourceId = itemResponse.data.MediaSources[0].Id;
+              console.log('[proxyStream] Got media source ID from direct endpoint:', mediaSourceId);
+            }
+          } catch (directError: any) {
+            console.warn('[proxyStream] Direct endpoint also failed:', directError.message);
           }
         }
       } catch (itemError: any) {
-        console.warn('[proxyStream] Failed to get media source ID, will try without it:', itemError.message);
+        console.warn('[proxyStream] Failed to get media source ID:', itemError.message);
+        // Try direct endpoint as fallback
+        try {
+          const itemResponse = await axios.get(`${serverUrl}/Items/${id}`, {
+            headers: { 'X-Emby-Token': userToken },
+          });
+          if (itemResponse.data && itemResponse.data.MediaSources && itemResponse.data.MediaSources.length > 0) {
+            mediaSourceId = itemResponse.data.MediaSources[0].Id;
+            console.log('[proxyStream] Got media source ID from direct endpoint (fallback):', mediaSourceId);
+          }
+        } catch (directError: any) {
+          console.warn('[proxyStream] Direct endpoint fallback also failed:', directError.message);
+        }
       }
     };
     
-    // Find audioStreamIndex if audioTrackIndex is set
-    await findAudioStreamIndex();
+    // Always get mediaSourceId (required for Jellyfin master.m3u8 requests)
+    await getMediaSourceAndAudioStream();
     
     // If mediaSourceId was provided in query but not found, use it anyway
     if (requestedMediaSourceId && !mediaSourceId) {
