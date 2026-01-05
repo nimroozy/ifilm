@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NGINX_TEMPLATE="$PROJECT_ROOT/../nginx/ifilm.conf.template"
 NGINX_CONFIG="/etc/nginx/sites-available/ifilm"
+NGINX_MAIN="/etc/nginx/nginx.conf"
 NGINX_CACHE_DIR="/var/cache/nginx"
 
 # Load environment variables
@@ -45,26 +46,48 @@ while IFS=',' read -r cache_type max_size inactive_time cache_valid_200 cache_va
     fi
 done < /tmp/cache_configs.txt
 
-# Generate cache zone directives
-CACHE_ZONES=""
-if [ -n "${CACHE_CONFIGS[images]}" ]; then
-    IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
-    CACHE_DIR="${CACHE_DIRECTORIES[images]:-/var/cache/nginx}/images"
-    CACHE_ZONES="${CACHE_ZONES}proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=images_cache:10m max_size=${max_size} inactive=${inactive_time};\n"
-    # Create directory if it doesn't exist
+# Create cache directories
+for cache_type in "${!CACHE_DIRECTORIES[@]}"; do
+    CACHE_DIR="${CACHE_DIRECTORIES[$cache_type]}/$cache_type"
     sudo mkdir -p "$CACHE_DIR"
     sudo chown -R www-data:www-data "$(dirname "$CACHE_DIR")"
     sudo chmod -R 755 "$(dirname "$CACHE_DIR")"
-fi
+done
 
-if [ -n "${CACHE_CONFIGS[videos]}" ]; then
-    IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[videos]}"
-    CACHE_DIR="${CACHE_DIRECTORIES[videos]:-/var/cache/nginx}/videos"
-    CACHE_ZONES="${CACHE_ZONES}proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=videos_cache:10m max_size=${max_size} inactive=${inactive_time};\n"
-    # Create directory if it doesn't exist
-    sudo mkdir -p "$CACHE_DIR"
-    sudo chown -R www-data:www-data "$(dirname "$CACHE_DIR")"
-    sudo chmod -R 755 "$(dirname "$CACHE_DIR")"
+# Add/update cache zones in main nginx.conf http block
+if [ -n "${CACHE_CONFIGS[images]}" ] || [ -n "${CACHE_CONFIGS[videos]}" ]; then
+    # Remove old cache zone definitions if they exist
+    sudo sed -i '/proxy_cache_path.*images_cache/d' "$NGINX_MAIN" 2>/dev/null || true
+    sudo sed -i '/proxy_cache_path.*videos_cache/d' "$NGINX_MAIN" 2>/dev/null || true
+    
+    # Create backup
+    sudo cp "$NGINX_MAIN" "${NGINX_MAIN}.bak.$(date +%s)" 2>/dev/null || true
+    
+    # Add cache zones to http block
+    if [ -n "${CACHE_CONFIGS[images]}" ]; then
+        IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
+        CACHE_DIR="${CACHE_DIRECTORIES[images]:-/var/cache/nginx}/images"
+        sudo sed -i "/^http {/a\\
+    # iFilm cache zone for images\\
+    proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=images_cache:10m max_size=${max_size} inactive=${inactive_time};\\
+" "$NGINX_MAIN"
+    fi
+    
+    if [ -n "${CACHE_CONFIGS[videos]}" ]; then
+        IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[videos]}"
+        CACHE_DIR="${CACHE_DIRECTORIES[videos]:-/var/cache/nginx}/videos"
+        if grep -q "images_cache" "$NGINX_MAIN"; then
+            sudo sed -i "/images_cache/a\\
+    # iFilm cache zone for videos\\
+    proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=videos_cache:10m max_size=${max_size} inactive=${inactive_time};\\
+" "$NGINX_MAIN"
+        else
+            sudo sed -i "/^http {/a\\
+    # iFilm cache zone for videos\\
+    proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=videos_cache:10m max_size=${max_size} inactive=${inactive_time};\\
+" "$NGINX_MAIN"
+        fi
+    fi
 fi
 
 # Use the actual NGINX config file (not template) as base
@@ -81,25 +104,7 @@ fi
 
 # Create temporary config file
 TMP_CONFIG=$(mktemp)
-
-# Read the base config
-BASE_CONTENT=$(cat "$NGINX_BASE")
-
-# Check if cache zones need to be added to main nginx.conf (http block)
-# For now, we'll add them at the top of the server config (NGINX allows this in some contexts)
-# But ideally they should be in /etc/nginx/nginx.conf http block
-
-# Start with base config
-echo "$BASE_CONTENT" > "$TMP_CONFIG"
-
-# Insert cache zones right after "server {" line if they don't exist
-if [ -n "$CACHE_ZONES" ] && ! grep -q "proxy_cache_path" "$TMP_CONFIG"; then
-    # Add cache zones comment and zones before the server block content
-    sed -i "/^server {/a\\
-    # NGINX Cache Zones (auto-generated from database)\\
-$(echo -e "$CACHE_ZONES" | sed 's/^/    /')
-" "$TMP_CONFIG"
-fi
+sudo cp "$NGINX_BASE" "$TMP_CONFIG"
 
 # Enable cache directives in location blocks if cache is enabled
 if [ -n "${CACHE_CONFIGS[images]}" ]; then

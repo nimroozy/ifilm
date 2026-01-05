@@ -47,23 +47,38 @@ for cache_type in "${!CACHE_DIRECTORIES[@]}"; do
     sudo chmod -R 755 "$(dirname "$CACHE_DIR")"
 done
 
-# Add cache zones to main nginx.conf http block if not present
+# Add/update cache zones in main nginx.conf http block
 if [ -n "${CACHE_CONFIGS[images]}" ] || [ -n "${CACHE_CONFIGS[videos]}" ]; then
-    # Check if cache zones already exist in main config
-    if ! sudo grep -q "images_cache\|videos_cache" "$NGINX_MAIN" 2>/dev/null; then
-        # Add cache zones to http block
-        if [ -n "${CACHE_CONFIGS[images]}" ]; then
-            IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
-            CACHE_DIR="${CACHE_DIRECTORIES[images]:-/var/cache/nginx}/images"
-            sudo sed -i "/^http {/a\\
+    # Remove old cache zone definitions if they exist
+    sudo sed -i '/proxy_cache_path.*images_cache/d' "$NGINX_MAIN" 2>/dev/null || true
+    sudo sed -i '/proxy_cache_path.*videos_cache/d' "$NGINX_MAIN" 2>/dev/null || true
+    
+    # Create backup
+    sudo cp "$NGINX_MAIN" "${NGINX_MAIN}.bak.$(date +%s)"
+    
+    # Find the http block and add cache zones after it opens
+    if [ -n "${CACHE_CONFIGS[images]}" ]; then
+        IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
+        CACHE_DIR="${CACHE_DIRECTORIES[images]:-/var/cache/nginx}/images"
+        # Add after http { line
+        sudo sed -i "/^http {/a\\
+    # iFilm cache zone for images\\
     proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=images_cache:10m max_size=${max_size} inactive=${inactive_time};\\
 " "$NGINX_MAIN"
-        fi
-        
-        if [ -n "${CACHE_CONFIGS[videos]}" ]; then
-            IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[videos]}"
-            CACHE_DIR="${CACHE_DIRECTORIES[videos]:-/var/cache/nginx}/videos"
+    fi
+    
+    if [ -n "${CACHE_CONFIGS[videos]}" ]; then
+        IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[videos]}"
+        CACHE_DIR="${CACHE_DIRECTORIES[videos]:-/var/cache/nginx}/videos"
+        # Add after http { line (or after images cache if it exists)
+        if grep -q "images_cache" "$NGINX_MAIN"; then
+            sudo sed -i "/images_cache/a\\
+    # iFilm cache zone for videos\\
+    proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=videos_cache:10m max_size=${max_size} inactive=${inactive_time};\\
+" "$NGINX_MAIN"
+        else
             sudo sed -i "/^http {/a\\
+    # iFilm cache zone for videos\\
     proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=videos_cache:10m max_size=${max_size} inactive=${inactive_time};\\
 " "$NGINX_MAIN"
         fi
@@ -72,7 +87,7 @@ fi
 
 # Enable cache directives in site config
 TMP_CONFIG=$(mktemp)
-cp "$NGINX_CONFIG" "$TMP_CONFIG"
+sudo cp "$NGINX_CONFIG" "$TMP_CONFIG"
 
 # Enable image cache
 if [ -n "${CACHE_CONFIGS[images]}" ]; then
@@ -86,9 +101,10 @@ if [ -n "${CACHE_CONFIGS[images]}" ]; then
         s|^[[:space:]]*# proxy_cache_background_update|        proxy_cache_background_update|
         s|^[[:space:]]*# add_header X-Cache-Status|        add_header X-Cache-Status|
     }' "$TMP_CONFIG"
-    # Update cache_valid values
+    # Update cache_valid values with actual ones from database
     sed -i "/location ~\* \^\/api\/media\/images\//,/^[[:space:]]*}/ {
         s|proxy_cache_valid 200 30d|proxy_cache_valid 200 ${cache_valid_200}|
+        s|proxy_cache_valid 200 ${cache_valid_200}|proxy_cache_valid 200 ${cache_valid_200}|  # Ensure it's set
         s|proxy_cache_valid 404 1h|proxy_cache_valid 404 ${cache_valid_404}|
     }" "$TMP_CONFIG"
 fi
@@ -106,9 +122,10 @@ if [ -n "${CACHE_CONFIGS[videos]}" ]; then
         s|^[[:space:]]*# proxy_cache_lock|        proxy_cache_lock|
         s|^[[:space:]]*# add_header X-Cache-Status|        add_header X-Cache-Status|
     }' "$TMP_CONFIG"
-    # Update cache_valid values
+    # Update cache_valid values with actual ones from database
     sed -i "/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
         s|proxy_cache_valid 200 7d|proxy_cache_valid 200 ${cache_valid_200}|
+        s|proxy_cache_valid 200 ${cache_valid_200}|proxy_cache_valid 200 ${cache_valid_200}|  # Ensure it's set
         s|proxy_cache_valid 404 1h|proxy_cache_valid 404 ${cache_valid_404}|
     }" "$TMP_CONFIG"
 fi
