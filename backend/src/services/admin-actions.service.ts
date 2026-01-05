@@ -18,7 +18,10 @@ export type AdminActionType =
   | 'r2_rename'
   | 'r2_move'
   | 'r2_delete'
-  | 'cache_clear';
+  | 'cache_clear'
+  | 'cache_config_update'
+  | 'cache_config_toggle'
+  | 'nginx_reload';
 
 export interface AdminAction {
   id: string;
