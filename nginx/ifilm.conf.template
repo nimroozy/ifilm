@@ -1,10 +1,6 @@
 # NGINX Cache Configuration Template
-# This file is generated from database cache_config table
-# Cache zones are defined at http level and used in location blocks
-
-# Cache zones (will be populated from database)
-# proxy_cache_path /var/cache/nginx/images levels=1:2 keys_zone=images_cache:10m max_size=5g inactive=30d;
-# proxy_cache_path /var/cache/nginx/videos levels=1:2 keys_zone=videos_cache:10m max_size=50g inactive=7d;
+# This file is used by update-nginx-cache.sh to generate the final NGINX config
+# Cache zones are defined at http level in nginx.conf and used in location blocks
 
 server {
     listen 80;
@@ -13,8 +9,98 @@ server {
     # Increase body size for file uploads
     client_max_body_size 10G;
 
-    # Backend API - MUST come before location / to take precedence
-    # Proxy all /api requests to backend (preserves /api prefix)
+    # Image caching - Proxy images from backend with NGINX cache
+    # Use ^~ modifier to make prefix location take precedence over regex locations
+    location ^~ /api/media/images/ {
+        # Cache directives will be enabled by update-nginx-cache.sh script
+        # proxy_cache images_cache;
+        # proxy_cache_valid 200 30d;
+        # proxy_cache_valid 404 1h;
+        # proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        # proxy_cache_background_update on;
+        # add_header X-Cache-Status $upstream_cache_status;
+        
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Enable buffering for caching (required for proxy_cache to work)
+        proxy_buffering on;
+        proxy_request_buffering off;
+        proxy_buffer_size 4k;
+        proxy_buffers 8 4k;
+
+        # Ignore cache-preventing headers from backend
+        proxy_ignore_headers "Cache-Control" "Set-Cookie" "Vary" "Expires";
+        proxy_hide_header "Cache-Control";
+        proxy_hide_header "Vary";
+
+        # Explicit cache key (default is $scheme$proxy_host$request_uri)
+        proxy_cache_key "$scheme$proxy_host$request_uri";
+        proxy_cache_min_uses 1;
+        proxy_cache_methods GET HEAD;
+        
+        # Cache headers
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Video/Stream caching - Proxy HLS streams with NGINX cache
+    # Use ^~ modifier to make prefix location take precedence over regex locations
+    location ^~ /api/media/stream/ {
+        # Cache directives will be enabled by update-nginx-cache.sh script
+        # proxy_cache videos_cache;
+        # proxy_cache_valid 200 7d;
+        # proxy_cache_valid 404 1h;
+        # proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        # proxy_cache_background_update on;
+        # proxy_cache_lock on;
+        # add_header X-Cache-Status $upstream_cache_status;
+        
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Increase timeouts for streaming
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        
+        # Enable buffering for caching (required for proxy_cache to work)
+        # But disable request buffering to allow streaming
+        proxy_buffering on;
+        proxy_request_buffering off;
+        proxy_buffer_size 4k;
+        proxy_buffers 8 4k;
+        
+        # Ignore cache-preventing headers from backend
+        # This tells NGINX to ignore these headers when deciding whether to cache
+        proxy_ignore_headers "Cache-Control" "Set-Cookie" "Vary" "Expires";
+        proxy_hide_header "Cache-Control";
+        proxy_hide_header "Vary";
+        
+        # Explicit cache key (default is $scheme$proxy_host$request_uri)
+        # This ensures consistent cache keys regardless of headers
+        proxy_cache_key "$scheme$proxy_host$request_uri";
+        proxy_cache_min_uses 1;
+        proxy_cache_methods GET HEAD;
+        
+        # Cache headers for HLS playlists and segments
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # Backend API - MUST come after specific /api/media/ locations
+    # Proxy all other /api requests to backend (preserves /api prefix)
+    # NOTE: This location comes AFTER the ^~ /api/media/ locations above
+    # The ^~ modifier ensures those locations match first and stop further matching
+    # This location only handles /api requests that don't match the ^~ locations above
     location /api {
         proxy_pass http://127.0.0.1:5000;
         proxy_http_version 1.1;
@@ -56,60 +142,6 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
 
-    # Image caching - Proxy images from backend with NGINX cache
-    location ~* ^/api/media/images/ {
-        # Use images cache if enabled
-        # proxy_cache images_cache;
-        # proxy_cache_valid 200 30d;
-        # proxy_cache_valid 404 1h;
-        # proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-        # proxy_cache_background_update on;
-        # add_header X-Cache-Status $upstream_cache_status;
-        
-        proxy_pass http://127.0.0.1:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Cache headers
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # Video/Stream caching - Proxy HLS streams with NGINX cache
-    location ~* ^/api/media/stream/ {
-        # Use videos cache if enabled
-        # proxy_cache videos_cache;
-        # proxy_cache_valid 200 7d;
-        # proxy_cache_valid 404 1h;
-        # proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-        # proxy_cache_background_update on;
-        # proxy_cache_lock on;
-        # add_header X-Cache-Status $upstream_cache_status;
-        
-        proxy_pass http://127.0.0.1:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Increase timeouts for streaming
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-        
-        # Disable buffering for streaming
-        proxy_buffering off;
-        proxy_request_buffering off;
-        
-        # Cache headers for HLS playlists and segments
-        expires 7d;
-        add_header Cache-Control "public";
-    }
-
     # Serve static assets directly with caching
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|map)$ {
         expires 1y;
@@ -126,7 +158,19 @@ server {
 
     # Frontend SPA routing - serve index.html for all routes, proxy API to backend
     location / {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/ @frontend;
+    }
+
+    # Fallback to Vite preview server for dynamic content (if static files not found)
+    location @frontend {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
     }
 }
-

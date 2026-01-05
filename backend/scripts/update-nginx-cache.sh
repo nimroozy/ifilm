@@ -96,15 +96,20 @@ if [ -n "${CACHE_CONFIGS[images]}" ] || [ -n "${CACHE_CONFIGS[videos]}" ]; then
 fi
 
 # Use the actual NGINX config file (not template) as base
+# Always prefer the actual config file to preserve any manual changes
 NGINX_BASE="$NGINX_CONFIG"
 if [ ! -f "$NGINX_BASE" ]; then
+    echo "⚠️  NGINX config file not found, using template..."
     # Fallback to template if config doesn't exist
     NGINX_BASE="$NGINX_TEMPLATE"
-fi
-
-if [ ! -f "$NGINX_BASE" ]; then
-    echo "Error: NGINX config or template not found"
-    exit 1
+    if [ ! -f "$NGINX_BASE" ]; then
+        echo "❌ Error: NGINX config or template not found"
+        echo "   Config: $NGINX_CONFIG"
+        echo "   Template: $NGINX_TEMPLATE"
+        exit 1
+    fi
+else
+    echo "✅ Using existing NGINX config file: $NGINX_BASE"
 fi
 
 # Create temporary config file
