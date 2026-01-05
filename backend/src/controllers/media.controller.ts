@@ -950,12 +950,20 @@ export const proxyStream = async (req: Request, res: Response) => {
         // Also add VideoStreamIndex=0 and SubtitleStreamIndex=-1 for proper stream selection
         urlParams.append('VideoStreamIndex', '0');
         urlParams.append('SubtitleStreamIndex', '-1');
+        
+        // CRITICAL: Jellyfin ignores AudioStreamIndex during direct-play HLS streams
+        // We MUST force transcoding by adding AudioCodec=aac (or VideoCodec/MaxStreamingBitrate)
+        // This disables direct play and makes Jellyfin honor AudioStreamIndex
+        urlParams.append('AudioCodec', 'aac');
+        console.log('[BACKEND AUDIO] ✅ Added AudioCodec=aac to force transcoding (required for AudioStreamIndex)');
+        
         const finalUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
         console.log('[BACKEND AUDIO] ========== MASTER PLAYLIST REQUEST ==========');
         console.log('[BACKEND AUDIO] Media ID:', id);
         console.log('[BACKEND AUDIO] AudioStreamIndex:', audioStreamIndex);
         console.log('[BACKEND AUDIO] VideoStreamIndex: 0');
         console.log('[BACKEND AUDIO] SubtitleStreamIndex: -1');
+        console.log('[BACKEND AUDIO] AudioCodec: aac (FORCING TRANSCODE)');
         console.log('[BACKEND AUDIO] Generated Jellyfin URL:', finalUrl);
         console.log('[BACKEND AUDIO] Full URL for testing:', finalUrl);
         console.log('[BACKEND AUDIO] ============================================');
