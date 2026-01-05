@@ -682,6 +682,13 @@ export default function Watch() {
           }`}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
+          onClick={(e) => {
+            // Close menus when clicking outside
+            if (showSettingsMenu || showAudioMenu) {
+              setShowSettingsMenu(false);
+              setShowAudioMenu(false);
+            }
+          }}
         >
           <div className="relative w-full bg-black" style={{ aspectRatio: '16/9' }}>
             <video
