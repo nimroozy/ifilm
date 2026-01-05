@@ -53,9 +53,14 @@ echo ""
 echo "Step 7: Checking service status..."
 run_ssh "pm2 list"
 
+# Setup/Update NGINX
+echo ""
+echo "Step 8: Setting up NGINX reverse proxy..."
+run_ssh "cd $REMOTE_DIR && if [ -f nginx/ifilm.conf ]; then cp nginx/ifilm.conf /etc/nginx/sites-available/ifilm && ln -sf /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/ifilm && nginx -t && systemctl restart nginx && echo '✅ NGINX updated' || echo '⚠️  NGINX update skipped'; fi"
+
 # Test backend
 echo ""
-echo "Step 8: Testing backend health..."
+echo "Step 9: Testing backend health..."
 HEALTH=$(run_ssh "curl -s http://localhost:5000/health" 2>/dev/null || echo "")
 if [[ "$HEALTH" == *"ok"* ]]; then
     echo "✅ Backend is healthy"
