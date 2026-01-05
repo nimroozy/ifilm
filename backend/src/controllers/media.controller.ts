@@ -719,15 +719,19 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
     } else {
       // Master playlist
-      // For Jellyfin HLS, AudioStreamIndex might need to be passed differently
-      // Try using the HLS endpoint with AudioStreamIndex if specified
+      // For Jellyfin HLS with audio track selection, we need to use the /hls endpoint
+      // Jellyfin's HLS endpoint: /Videos/{id}/hls/{playlistId}/stream.m3u8
+      // When AudioStreamIndex is specified, we need to generate a new HLS playlist
       if (audioStreamIndex !== null && mediaSourceId) {
-        // Request HLS stream with specific audio track
-        // Jellyfin's HLS endpoint: /Videos/{id}/hls/{playlistId}/stream.m3u8
-        // But we need to get the playlistId first, or use a different approach
-        // For now, try adding AudioStreamIndex to master.m3u8 request
+        // Use Jellyfin's /hls endpoint to generate playlist with specific audio track
+        // First, we need to get/create an HLS playlist with the audio track
+        // Jellyfin's API: POST /Videos/{id}/hls with body containing AudioStreamIndex
+        // But for GET requests, we can use: /Videos/{id}/hls/{playlistId}/stream.m3u8?AudioStreamIndex=X
+        // However, we need a playlistId first. Let's try a different approach:
+        // Use the master.m3u8 endpoint but with AudioStreamIndex - Jellyfin should filter the variants
         targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
         console.log('[proxyStream] Requesting master.m3u8 with AudioStreamIndex:', audioStreamIndex);
+        console.log('[proxyStream] Full URL:', targetUrl);
       } else {
         targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
       }
@@ -786,8 +790,17 @@ export const proxyStream = async (req: Request, res: Response) => {
       
       // Debug: Log playlist content when audio track is specified
       if (audioStreamIndex !== null) {
-        console.log('[proxyStream] Playlist content (first 500 chars) with AudioStreamIndex:', audioStreamIndex);
-        console.log('[proxyStream]', playlistContent.substring(0, 500));
+        console.log('[proxyStream] Playlist content (first 1000 chars) with AudioStreamIndex:', audioStreamIndex);
+        console.log('[proxyStream]', playlistContent.substring(0, 1000));
+        console.log('[proxyStream] Playlist length:', playlistContent.length);
+        // Check if playlist contains audio track references
+        const hasAudioGroup = playlistContent.includes('GROUP-ID="audio"') || playlistContent.includes('GROUP-ID="aud');
+        const hasAudioStream = playlistContent.includes('AUDIO=');
+        console.log('[proxyStream] Playlist analysis:', {
+          hasAudioGroup,
+          hasAudioStream,
+          lines: playlistContent.split('\n').length,
+        });
       }
 
       // Rewrite URLs in the playlist to RELATIVE paths only
