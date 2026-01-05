@@ -394,7 +394,12 @@ export default function Watch() {
         debug: false,
       });
 
-      hls.loadSource(resolveMediaUrl(streamUrl));
+      const resolvedUrl = resolveMediaUrl(streamUrl);
+      console.log('[STREAM URL] Loading HLS source:', resolvedUrl);
+      console.log('[STREAM URL] Original streamUrl:', streamUrl);
+      console.log('[STREAM URL] Is master.m3u8?', streamUrl?.endsWith('master.m3u8') || resolvedUrl?.endsWith('master.m3u8'));
+      
+      hls.loadSource(resolvedUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -1247,74 +1252,65 @@ export default function Watch() {
                                   const currentTime = videoRef.current?.currentTime || 0;
                                   const jellyfinIndex = track.index; // Jellyfin MediaStream Index
                                   
-                                  console.log('🔴 [AUDIO SWITCH] ========== STARTING ==========');
-                                  console.log('🔴 [AUDIO SWITCH] Request:', {
-                                    arrayIndex: index,
-                                    jellyfinIndex: jellyfinIndex,
-                                    trackName: track.name,
-                                    trackLanguage: track.language,
-                                    mediaSourceId: track.mediaSourceId,
-                                    currentTime,
-                                    wasPlaying,
-                                  });
+                                  // ============================================
+                                  // AUDIO TRACK SWITCHING - COMPREHENSIVE DEBUG
+                                  // ============================================
+                                  console.log('[AUDIO] ========== AUDIO SWITCH START ==========');
+                                  console.log('[AUDIO] selected index:', index);
+                                  console.log('[AUDIO] jellyfin index:', jellyfinIndex);
+                                  console.log('[AUDIO] track name:', track.name);
+                                  console.log('[AUDIO] mediaSourceId:', track.mediaSourceId);
+                                  console.log('[AUDIO] currentTime:', currentTime);
+                                  console.log('[AUDIO] wasPlaying:', wasPlaying);
                                   
-                                  // ============================================
-                                  // STEP 1: Stop current playback
-                                  // ============================================
+                                  // Step 1: Stop current playback
+                                  console.log('[AUDIO] stopping playback');
                                   if (videoRef.current) {
-                                    console.log('🔴 [AUDIO SWITCH] Step 1: Stopping playback');
                                     videoRef.current.pause();
+                                    console.log('[AUDIO] ✅ video.pause() called');
                                     videoRef.current.currentTime = 0; // Reset to prevent buffering issues
-                                    console.log('🔴 [AUDIO SWITCH] ✅ Playback stopped, video paused, time reset to 0');
+                                    console.log('[AUDIO] ✅ video.currentTime set to 0');
                                   } else {
-                                    console.error('🔴 [AUDIO SWITCH] ❌ videoRef.current is null!');
+                                    console.error('[AUDIO] ❌ videoRef.current is null!');
                                   }
                                   
-                                  // ============================================
-                                  // STEP 2: Destroy existing HLS instance
-                                  // ============================================
+                                  // Step 2: Destroy existing HLS instance
+                                  console.log('[AUDIO] destroying HLS instance');
                                   if (hlsRef.current) {
-                                    console.log('🔴 [AUDIO SWITCH] Step 2: Destroying HLS instance');
                                     try {
                                       hlsRef.current.destroy();
+                                      console.log('[AUDIO] ✅ hls.destroy() called');
                                       hlsRef.current = null;
-                                      console.log('🔴 [AUDIO SWITCH] ✅ HLS instance destroyed');
+                                      console.log('[AUDIO] ✅ hlsRef.current set to null');
                                     } catch (err) {
-                                      console.error('🔴 [AUDIO SWITCH] ❌ Error destroying HLS:', err);
+                                      console.error('[AUDIO] ❌ Error destroying HLS:', err);
                                     }
                                   } else {
-                                    console.log('🔴 [AUDIO SWITCH] ⚠️ No HLS instance to destroy (may be native HLS)');
+                                    console.log('[AUDIO] ⚠️ No HLS instance (may be native HLS)');
                                   }
                                   
-                                  // ============================================
-                                  // STEP 3: Clear video source
-                                  // ============================================
+                                  // Step 3: Clear video source
+                                  console.log('[AUDIO] clearing video src');
                                   if (videoRef.current) {
-                                    console.log('🔴 [AUDIO SWITCH] Step 3: Clearing video source');
                                     const oldSrc = videoRef.current.src;
                                     videoRef.current.src = '';
+                                    console.log('[AUDIO] ✅ video.src set to "" (was:', oldSrc, ')');
                                     videoRef.current.load(); // Force reload
-                                    console.log('🔴 [AUDIO SWITCH] ✅ Video source cleared (was:', oldSrc, ')');
+                                    console.log('[AUDIO] ✅ video.load() called');
                                   } else {
-                                    console.error('🔴 [AUDIO SWITCH] ❌ videoRef.current is null in Step 3!');
+                                    console.error('[AUDIO] ❌ videoRef.current is null!');
                                   }
                                   
-                                  // ============================================
-                                  // STEP 4: Update UI state and save preference
-                                  // ============================================
-                                  console.log('🔴 [AUDIO SWITCH] Step 4: Updating UI state');
+                                  // Step 4: Update UI state and save preference
                                   setSelectedAudioTrack(index);
                                   if (media?.id) {
                                     saveAudioTrack(media.id, index);
-                                    console.log('🔴 [AUDIO SWITCH] ✅ UI state updated, preference saved');
                                   }
                                   
-                                  // ============================================
-                                  // STEP 5: Load new stream URL with AudioStreamIndex
-                                  // ============================================
+                                  // Step 5: Load new stream URL with AudioStreamIndex
                                   if (media?.id) {
-                                    console.log('🔴 [AUDIO SWITCH] Step 5: Loading new stream with AudioStreamIndex');
-                                    console.log('🔴 [AUDIO SWITCH] Parameters:', {
+                                    console.log('[AUDIO] requesting new stream');
+                                    console.log('[AUDIO] Parameters:', {
                                       mediaId: media.id,
                                       audioTrackArrayIndex: index,
                                       audioTrackJellyfinIndex: jellyfinIndex,
@@ -1323,59 +1319,60 @@ export default function Watch() {
                                     
                                     // Clear stream URL first to trigger re-initialization
                                     setStreamUrl(null);
-                                    console.log('🔴 [AUDIO SWITCH] ✅ Stream URL cleared, will trigger re-init');
                                     
                                     // Load new stream with audio track parameter
                                     // This will generate: /Videos/{id}/master.m3u8?AudioStreamIndex={jellyfinIndex}&VideoStreamIndex=0&SubtitleStreamIndex=-1
                                     await loadStreamUrl(media.id, index, track.mediaSourceId);
-                                    console.log('🔴 [AUDIO SWITCH] ✅ loadStreamUrl completed');
                                     
-                                    // ============================================
-                                    // STEP 6: Wait for player to initialize, then restore position and resume
-                                    // ============================================
-                                    console.log('🔴 [AUDIO SWITCH] Step 6: Waiting for player initialization...');
+                                    // Wait for stream URL to be set and log it
+                                    const checkStreamUrl = setInterval(() => {
+                                      if (streamUrl) {
+                                        clearInterval(checkStreamUrl);
+                                        console.log('[AUDIO] new stream URL:', streamUrl);
+                                        console.log('[AUDIO] URL contains audioTrack?', streamUrl.includes('audioTrack'));
+                                        console.log('[AUDIO] URL contains AudioStreamIndex?', streamUrl.includes('AudioStreamIndex'));
+                                      }
+                                    }, 100);
                                     
-                                    // Wait for video to be ready
+                                    // Step 6: Wait for player to initialize, then restore position and resume
                                     const waitForReady = () => {
                                       if (videoRef.current && videoRef.current.readyState >= 2) {
-                                        console.log('🔴 [AUDIO SWITCH] ✅ Video ready, restoring position:', currentTime);
+                                        console.log('[AUDIO] ✅ Video ready (readyState:', videoRef.current.readyState, ')');
                                         videoRef.current.currentTime = currentTime;
+                                        console.log('[AUDIO] ✅ Position restored to:', currentTime);
                                         
                                         if (wasPlaying) {
-                                          console.log('🔴 [AUDIO SWITCH] Resuming playback...');
                                           videoRef.current.play()
                                             .then(() => {
-                                              console.log('🔴 [AUDIO SWITCH] ✅ Playback resumed successfully');
+                                              console.log('[AUDIO] ✅ Playback resumed');
                                               toast.success(`Switched to ${track.name}`);
-                                              console.log('🔴 [AUDIO SWITCH] ========== COMPLETE ==========');
+                                              console.log('[AUDIO] ========== COMPLETE ==========');
                                             })
                                             .catch((err: any) => {
-                                              console.error('🔴 [AUDIO SWITCH] ❌ Failed to resume playback:', err);
+                                              console.error('[AUDIO] ❌ Failed to resume:', err);
                                               toast.error('Failed to resume playback');
                                             });
                                         } else {
-                                          console.log('🔴 [AUDIO SWITCH] ✅ Position restored (was paused)');
+                                          console.log('[AUDIO] ✅ Position restored (was paused)');
                                           toast.success(`Switched to ${track.name}`);
-                                          console.log('🔴 [AUDIO SWITCH] ========== COMPLETE ==========');
+                                          console.log('[AUDIO] ========== COMPLETE ==========');
                                         }
                                       } else {
-                                        // Retry after a short delay
                                         setTimeout(waitForReady, 200);
                                       }
                                     };
                                     
-                                    // Start waiting after a brief delay to allow stream URL to be set
                                     setTimeout(waitForReady, 500);
                                     
                                     // Fallback timeout
                                     setTimeout(() => {
                                       if (videoRef.current && videoRef.current.readyState < 2) {
-                                        console.warn('🔴 [AUDIO SWITCH] ⚠️ Video not ready after 3 seconds, forcing restore');
+                                        console.warn('[AUDIO] ⚠️ Video not ready after 3s, forcing restore');
                                         if (videoRef.current) {
                                           videoRef.current.currentTime = currentTime;
                                           if (wasPlaying) {
                                             videoRef.current.play().catch((err: any) => {
-                                              console.error('🔴 [AUDIO SWITCH] ❌ Failed to resume (fallback):', err);
+                                              console.error('[AUDIO] ❌ Failed to resume (fallback):', err);
                                             });
                                           }
                                           toast.success(`Switched to ${track.name}`);
@@ -1383,7 +1380,7 @@ export default function Watch() {
                                       }
                                     }, 3000);
                                   } else {
-                                    console.error('🔴 [AUDIO SWITCH] ❌ media?.id is null!');
+                                    console.error('[AUDIO] ❌ media?.id is null!');
                                   }
                                   
                                   // Skip the old HLS.js audio track switching code since Jellyfin doesn't support it
@@ -1530,29 +1527,40 @@ export default function Watch() {
                           </div>
 
                           {/* Video Quality - Dynamic based on available levels */}
-                          {availableQualities.length > 1 && (
-                            <div className="mb-4">
-                              <div className="text-white text-xs font-semibold mb-2 flex items-center gap-2">
-                                <Gauge className="h-4 w-4" />
-                                Quality
-                              </div>
-                              <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                                {availableQualities.map((quality) => (
-                                  <button
-                                    key={quality.value}
-                                    onClick={() => handleQualityChange(quality.value)}
-                                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                                      videoQuality === quality.value
-                                        ? 'bg-[#E50914] text-white'
-                                        : 'text-white/80 hover:bg-white/10'
-                                    }`}
-                                  >
-                                    {quality.label}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                          {(() => {
+                            console.log('[QUALITY UI] Rendering quality selector. availableQualities.length:', availableQualities.length);
+                            console.log('[QUALITY UI] availableQualities:', availableQualities);
+                            console.log('[QUALITY UI] Will show?', availableQualities.length > 1);
+                            
+                            if (availableQualities.length > 1) {
+                              return (
+                                <div className="mb-4">
+                                  <div className="text-white text-xs font-semibold mb-2 flex items-center gap-2">
+                                    <Gauge className="h-4 w-4" />
+                                    Quality
+                                  </div>
+                                  <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                                    {availableQualities.map((quality) => (
+                                      <button
+                                        key={quality.value}
+                                        onClick={() => handleQualityChange(quality.value)}
+                                        className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                                          videoQuality === quality.value
+                                            ? 'bg-[#E50914] text-white'
+                                            : 'text-white/80 hover:bg-white/10'
+                                        }`}
+                                      >
+                                        {quality.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              console.warn('[QUALITY UI] ⚠️ Quality selector NOT shown - availableQualities.length <= 1');
+                              return null;
+                            }
+                          })()}
                         </div>
                       </div>
                     )}
