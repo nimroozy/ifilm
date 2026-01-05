@@ -23,6 +23,10 @@ import {
   updateUserRole,
   deleteUser,
   clearCache,
+  getCacheConfigController,
+  saveCacheConfigController,
+  updateCacheConfigEnabledController,
+  reloadNginxConfigController,
 } from '../controllers/admin.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
@@ -35,6 +39,12 @@ router.use(authMiddleware);
 router.get('/stats', getSystemStats);
 router.get('/activity', getActivityLogs);
 router.post('/cache/clear', clearCache);
+
+// Cache configuration routes
+router.get('/cache/config', getCacheConfigController);
+router.post('/cache/config', saveCacheConfigController);
+router.put('/cache/config/:cacheType/enabled', updateCacheConfigEnabledController);
+router.post('/cache/nginx/reload', reloadNginxConfigController);
 
 // Jellyfin configuration routes
 router.post('/jellyfin/test', testJellyfinConnection);

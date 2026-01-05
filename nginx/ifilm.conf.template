@@ -1,0 +1,132 @@
+# NGINX Cache Configuration Template
+# This file is generated from database cache_config table
+# Cache zones are defined at http level and used in location blocks
+
+# Cache zones (will be populated from database)
+# proxy_cache_path /var/cache/nginx/images levels=1:2 keys_zone=images_cache:10m max_size=5g inactive=30d;
+# proxy_cache_path /var/cache/nginx/videos levels=1:2 keys_zone=videos_cache:10m max_size=50g inactive=7d;
+
+server {
+    listen 80;
+    server_name _;
+
+    # Increase body size for file uploads
+    client_max_body_size 10G;
+
+    # Backend API - MUST come before location / to take precedence
+    # Proxy all /api requests to backend (preserves /api prefix)
+    location /api {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        
+        # Increase timeouts for long-running requests (streaming)
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        
+        # Disable buffering for streaming
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+
+    # Health check endpoint (backend root route)
+    location /health {
+        proxy_pass http://127.0.0.1:5000/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
+    # Root directory for static files (frontend dist folder)
+    root /opt/ifilm/shadcn-ui/dist;
+    index index.html;
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml+rss application/json application/javascript;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Image caching - Proxy images from backend with NGINX cache
+    location ~* ^/api/media/images/ {
+        # Use images cache if enabled
+        # proxy_cache images_cache;
+        # proxy_cache_valid 200 30d;
+        # proxy_cache_valid 404 1h;
+        # proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        # proxy_cache_background_update on;
+        # add_header X-Cache-Status $upstream_cache_status;
+        
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Cache headers
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Video/Stream caching - Proxy HLS streams with NGINX cache
+    location ~* ^/api/media/stream/ {
+        # Use videos cache if enabled
+        # proxy_cache videos_cache;
+        # proxy_cache_valid 200 7d;
+        # proxy_cache_valid 404 1h;
+        # proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        # proxy_cache_background_update on;
+        # proxy_cache_lock on;
+        # add_header X-Cache-Status $upstream_cache_status;
+        
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Increase timeouts for streaming
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        
+        # Disable buffering for streaming
+        proxy_buffering off;
+        proxy_request_buffering off;
+        
+        # Cache headers for HLS playlists and segments
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # Serve static assets directly with caching
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|map)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # Don't cache HTML
+    location ~* \.html$ {
+        expires -1;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+        try_files $uri =404;
+    }
+
+    # Frontend SPA routing - serve index.html for all routes, proxy API to backend
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+

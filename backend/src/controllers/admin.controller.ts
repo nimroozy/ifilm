@@ -9,6 +9,7 @@ import { logAction } from '../services/admin-actions.service';
 import { query } from '../config/database';
 import { saveR2Config, getR2Config as getR2ConfigService } from '../services/r2-config.service';
 import { r2Service } from '../services/r2.service';
+import { getCacheConfig, getCacheConfigByType, saveCacheConfig, updateCacheConfigEnabled } from '../services/cache-config.service';
 import multer from 'multer';
 
 const execAsync = promisify(exec);
@@ -1052,6 +1053,169 @@ export const clearCache = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Failed to clear cache',
+      detailedError: error.message,
+    });
+  }
+};
+
+// Cache configuration endpoints
+export const getCacheConfigController = async (req: Request, res: Response) => {
+  try {
+    const { type } = req.query;
+    const cacheType = type as 'images' | 'videos' | 'all' | undefined;
+    
+    const configs = await getCacheConfig(cacheType);
+    
+    res.json({
+      success: true,
+      configs,
+    });
+  } catch (error: any) {
+    console.error('Get cache config error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch cache configuration',
+      detailedError: error.message,
+    });
+  }
+};
+
+export const saveCacheConfigController = async (req: Request, res: Response) => {
+  try {
+    const { cacheType, maxSize, inactiveTime, cacheValid200, cacheValid404, isEnabled } = req.body;
+
+    if (!cacheType || !maxSize || !inactiveTime) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cache type, max size, and inactive time are required',
+      });
+    }
+
+    if (!['images', 'videos', 'all'].includes(cacheType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cache type must be one of: images, videos, all',
+      });
+    }
+
+    const savedConfig = await saveCacheConfig(
+      cacheType,
+      maxSize,
+      inactiveTime,
+      cacheValid200 || '7d',
+      cacheValid404 || '1h',
+      isEnabled !== undefined ? isEnabled : true
+    );
+
+    // Log admin action
+    const adminId = (req as any).user?.userId;
+    if (adminId) {
+      logAction(adminId, 'cache_config_update', savedConfig.id, {
+        cacheType,
+        maxSize,
+        inactiveTime,
+      }).catch((err: any) => console.error('Failed to log admin action:', err));
+    }
+
+    res.json({
+      success: true,
+      message: 'Cache configuration saved successfully',
+      config: savedConfig,
+    });
+  } catch (error: any) {
+    console.error('Save cache config error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save cache configuration',
+      detailedError: error.message,
+    });
+  }
+};
+
+export const updateCacheConfigEnabledController = async (req: Request, res: Response) => {
+  try {
+    const { cacheType } = req.params;
+    const { isEnabled } = req.body;
+
+    if (!['images', 'videos', 'all'].includes(cacheType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cache type must be one of: images, videos, all',
+      });
+    }
+
+    const updatedConfig = await updateCacheConfigEnabled(
+      cacheType as 'images' | 'videos' | 'all',
+      isEnabled
+    );
+
+    // Log admin action
+    const adminId = (req as any).user?.userId;
+    if (adminId) {
+      logAction(adminId, 'cache_config_toggle', updatedConfig.id, {
+        cacheType,
+        isEnabled,
+      }).catch((err: any) => console.error('Failed to log admin action:', err));
+    }
+
+    res.json({
+      success: true,
+      message: 'Cache configuration updated successfully',
+      config: updatedConfig,
+    });
+  } catch (error: any) {
+    console.error('Update cache config error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update cache configuration',
+      detailedError: error.message,
+    });
+  }
+};
+
+export const reloadNginxConfigController = async (req: Request, res: Response) => {
+  try {
+    // Test NGINX config first
+    const { stdout: testOutput, stderr: testError } = await execAsync('sudo nginx -t');
+    
+    if (testError && !testOutput.includes('successful')) {
+      return res.status(400).json({
+        success: false,
+        message: 'NGINX configuration test failed',
+        error: testError,
+      });
+    }
+
+    // Reload NGINX
+    const { stdout: reloadOutput, stderr: reloadError } = await execAsync('sudo systemctl reload nginx');
+    
+    if (reloadError) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to reload NGINX',
+        error: reloadError,
+      });
+    }
+
+    // Log admin action
+    const adminId = (req as any).user?.userId;
+    if (adminId) {
+      logAction(adminId, 'nginx_reload', null, {
+        message: 'NGINX configuration reloaded',
+      }).catch((err: any) => console.error('Failed to log admin action:', err));
+    }
+
+    res.json({
+      success: true,
+      message: 'NGINX configuration reloaded successfully',
+      testOutput,
+      reloadOutput,
+    });
+  } catch (error: any) {
+    console.error('Reload NGINX error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reload NGINX',
       detailedError: error.message,
     });
   }
