@@ -755,35 +755,49 @@ export const proxyStream = async (req: Request, res: Response) => {
             }
             
             // If audioTrackIndex is specified, find the matching audio stream
+            // CRITICAL: audioTrackIndex should be the Jellyfin MediaStream Index (not array index)
             if (audioTrackIndex !== null && selectedMediaSource.MediaStreams) {
               const audioStreams = selectedMediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
-              console.log('[proxyStream] Looking for audio track:', {
-                requestedIndex: audioTrackIndex,
-                availableAudioStreams: audioStreams.map((s: any) => ({
-                  Index: s.Index,
-                  Language: s.Language || s.LanguageTag,
-                  Codec: s.Codec,
-                })),
-              });
+              
+              console.log('[proxyStream] ========== AUDIO TRACK VERIFICATION ==========');
+              console.log('[proxyStream] Requested audioTrackIndex (should be Jellyfin Index):', audioTrackIndex);
+              console.log('[proxyStream] Available audio streams:', audioStreams.map((s: any, idx: number) => ({
+                arrayIndex: idx,
+                jellyfinIndex: s.Index,
+                language: s.Language || s.LanguageTag,
+                codec: s.Codec,
+                name: s.DisplayTitle || s.Title,
+              })));
+              console.log('[proxyStream] Available Jellyfin Indices:', audioStreams.map((s: any) => s.Index).join(', '));
               
               // Check if the requested index exists in the audio streams
+              // CRITICAL: Match by stream.Index (Jellyfin MediaStream Index), not array index
               const matchingStream = audioStreams.find((stream: any) => stream.Index === audioTrackIndex);
               if (matchingStream) {
                 // Use the Index directly (frontend already passed the correct Jellyfin MediaStream Index)
                 audioStreamIndex = audioTrackIndex;
-                console.log('[proxyStream] ✅ Audio track found and will be used:', {
-                  jellyfinIndex: audioStreamIndex,
+                console.log('[proxyStream] ✅ Audio track MATCHED:', {
+                  requestedJellyfinIndex: audioTrackIndex,
+                  matchedJellyfinIndex: matchingStream.Index,
                   language: matchingStream.Language || matchingStream.LanguageTag,
                   codec: matchingStream.Codec,
                   name: matchingStream.DisplayTitle || matchingStream.Title,
                 });
+                console.log('[proxyStream] ✅ Will use AudioStreamIndex:', audioStreamIndex);
               } else {
-                console.warn('[proxyStream] ❌ AudioStreamIndex not found:', {
+                console.error('[proxyStream] ❌❌❌ AUDIO TRACK NOT FOUND - INDEX MISMATCH!', {
                   requested: audioTrackIndex,
                   availableIndices: audioStreams.map((s: any) => s.Index).join(', '),
-                  allStreams: audioStreams.map((s: any) => ({ Index: s.Index, Type: s.Type })),
+                  allStreams: audioStreams.map((s: any, idx: number) => ({
+                    arrayIndex: idx,
+                    jellyfinIndex: s.Index,
+                    type: s.Type,
+                  })),
                 });
+                console.error('[proxyStream] ❌ This means the frontend sent the wrong index!');
+                console.error('[proxyStream] ❌ Frontend should send Jellyfin MediaStream Index, not array index!');
               }
+              console.log('[proxyStream] ============================================');
             } else if (audioTrackIndex !== null) {
               console.warn('[proxyStream] Audio track requested but no MediaStreams available:', {
                 audioTrackIndex,
