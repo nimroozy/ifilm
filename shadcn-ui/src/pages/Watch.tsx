@@ -857,22 +857,56 @@ export default function Watch() {
                             {audioTracks.map((track, index) => (
                               <button
                                 key={`${track.mediaSourceId}-${index}`}
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  setSelectedAudioTrack(index);
                                   setShowAudioMenu(false);
+                                  
+                                  // Preserve playback state
+                                  const wasPlaying = isPlaying;
+                                  const currentTime = videoRef.current?.currentTime || 0;
                                   
                                   // Switch audio track on existing HLS instance without reloading
                                   if (hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 0) {
                                     try {
                                       // Find the matching audio track in HLS
                                       const hlsTrackIndex = Math.min(index, hlsRef.current.audioTracks.length - 1);
+                                      
+                                      // Pause video temporarily to prevent issues during switch
+                                      if (videoRef.current && wasPlaying) {
+                                        videoRef.current.pause();
+                                      }
+                                      
+                                      // Switch audio track
                                       hlsRef.current.audioTrack = hlsTrackIndex;
+                                      setSelectedAudioTrack(index);
+                                      
                                       console.log('[Watch] Switched to audio track:', hlsTrackIndex, hlsRef.current.audioTracks[hlsTrackIndex]);
+                                      
+                                      // Restore playback state after a brief delay
+                                      if (videoRef.current) {
+                                        // Ensure video time is preserved
+                                        videoRef.current.currentTime = currentTime;
+                                        
+                                        // Resume playback if it was playing
+                                        if (wasPlaying) {
+                                          setTimeout(() => {
+                                            if (videoRef.current) {
+                                              videoRef.current.play().catch(err => {
+                                                console.error('[Watch] Failed to resume playback:', err);
+                                              });
+                                            }
+                                          }, 100);
+                                        }
+                                      }
+                                      
                                       toast.success(`Switched to ${track.name}`);
                                     } catch (error) {
                                       console.error('[Watch] Failed to switch audio track:', error);
                                       toast.error('Failed to switch audio track');
+                                      // Try to resume if it was playing
+                                      if (videoRef.current && wasPlaying) {
+                                        videoRef.current.play().catch(() => {});
+                                      }
                                     }
                                   } else if (videoRef.current && videoRef.current.audioTracks && videoRef.current.audioTracks.length > 0) {
                                     // Native HLS (Safari)
@@ -885,6 +919,7 @@ export default function Watch() {
                                         }
                                         // Enable selected track
                                         videoRef.current.audioTracks[trackIndex].enabled = true;
+                                        setSelectedAudioTrack(index);
                                         console.log('[Watch] Switched to native audio track:', trackIndex);
                                         toast.success(`Switched to ${track.name}`);
                                       }
@@ -895,8 +930,18 @@ export default function Watch() {
                                   } else {
                                     // Fallback: reload stream with new audio track
                                     console.log('[Watch] HLS tracks not available, reloading stream with audio track:', index, track);
+                                    setSelectedAudioTrack(index);
                                     if (media?.id) {
-                                      loadStreamUrl(media.id, index, track.mediaSourceId);
+                                      await loadStreamUrl(media.id, index, track.mediaSourceId);
+                                      // Restore playback state after reload
+                                      if (videoRef.current && wasPlaying) {
+                                        setTimeout(() => {
+                                          if (videoRef.current) {
+                                            videoRef.current.currentTime = currentTime;
+                                            videoRef.current.play().catch(() => {});
+                                          }
+                                        }, 500);
+                                      }
                                     }
                                   }
                                 }}
