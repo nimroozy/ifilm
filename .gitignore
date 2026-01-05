@@ -46,3 +46,10 @@ Thumbs.db
 *.tar.gz
 deploy-*.tar.gz
 
+# Duplicate files in wrong locations (should be removed)
+backend/src/admin.controller.ts
+backend/src/admin.routes.ts
+backend/src/jellyfin.service.ts
+backend/src/jellyfin-libraries.service.ts
+backend/src/media.controller.ts
+
