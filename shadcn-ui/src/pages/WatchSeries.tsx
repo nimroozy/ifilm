@@ -148,11 +148,28 @@ export default function WatchSeries() {
         seasons: seriesData.seasons || [],
       });
 
+      // Check if there's an episode query parameter (from continue watching)
+      const episodeIdFromUrl = searchParams.get('episode');
+      
       // Load first season's episodes
       if (seriesData.seasons && seriesData.seasons.length > 0) {
         const firstSeason = seriesData.seasons[0];
         setSelectedSeason(firstSeason.seasonNumber);
-        await loadEpisodes(id!, firstSeason.id);
+        
+        // If episode ID is in URL, try to load it from first season
+        // If not found, findAndLoadEpisode will search other seasons
+        await loadEpisodes(id!, firstSeason.id, episodeIdFromUrl || undefined);
+        
+        // If episode not found in first season, search all seasons
+        if (episodeIdFromUrl) {
+          // Wait a bit to see if episode was found in first season
+          setTimeout(() => {
+            if (!selectedEpisode) {
+              console.log('[WatchSeries] Episode not in first season, searching all seasons...');
+              findAndLoadEpisode(episodeIdFromUrl, seriesData.seasons);
+            }
+          }, 1000);
+        }
       }
     } catch (err: any) {
       console.error('Failed to load series details:', err);
@@ -163,7 +180,7 @@ export default function WatchSeries() {
     }
   };
 
-  const loadEpisodes = async (seriesId: string, seasonId: string) => {
+  const loadEpisodes = async (seriesId: string, seasonId: string, autoSelectEpisodeId?: string) => {
     try {
       setLoadingEpisodes(true);
       // Clear stream URL before loading episodes
@@ -174,18 +191,29 @@ export default function WatchSeries() {
       const response = await api.get(`/media/series/${seriesId}/episodes?seasonId=${seasonId}`);
       const episodesData = response.data.episodes || response.data.items || [];
       
-      
-      setEpisodes(episodesData.map((ep: any) => ({
+      const mappedEpisodes = episodesData.map((ep: any) => ({
         id: ep.id,
         name: ep.name || ep.title,
         episodeNumber: ep.episodeNumber || ep.indexNumber || 0,
         overview: ep.overview || '',
         thumbnailUrl: ep.thumbnailUrl || ep.posterUrl,
-      })));
+      }));
       
+      setEpisodes(mappedEpisodes);
       
-      // DO NOT auto-select or auto-load stream URL
-      // User must explicitly click on an episode to play it
+      // If episode ID is provided (from URL query), auto-select it
+      if (autoSelectEpisodeId) {
+        const episodeExists = mappedEpisodes.some(ep => ep.id === autoSelectEpisodeId);
+        if (episodeExists) {
+          console.log('[WatchSeries] Auto-selecting episode from URL:', autoSelectEpisodeId);
+          // Small delay to ensure state is updated
+          setTimeout(() => {
+            handleEpisodeSelect(autoSelectEpisodeId);
+          }, 200);
+        } else {
+          console.log('[WatchSeries] Episode not found in current season, will search other seasons if needed');
+        }
+      }
     } catch (err: any) {
       console.error('Failed to load episodes:', err);
       toast.error('Failed to load episodes');
