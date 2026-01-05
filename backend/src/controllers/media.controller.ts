@@ -1417,10 +1417,39 @@ export const getSeries = async (req: Request, res: Response) => {
 };
 
 export const getSeriesDetails = async (req: Request, res: Response) => {
+  // Check if Jellyfin is initialized
+  if (!jellyfinService.isInitialized()) {
+    const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
+    const config = await loadJellyfinConfig();
+    if (config) {
+      jellyfinService.initialize(config.serverUrl, config.apiKey);
+    } else {
+      return res.status(503).json({ 
+        message: 'Jellyfin server not configured',
+        error: 'Jellyfin client not initialized'
+      });
+    }
+  }
+
   try {
     const { id } = req.params;
+    console.log('[getSeriesDetails] Fetching details for series ID:', id);
 
-    const item = await jellyfinService.getItemDetails(id);
+    // Always validate cache to ensure item still exists in Jellyfin
+    const item = await jellyfinService.getItemDetails(id, true);
+
+    if (!item || !item.Id) {
+      console.error('[getSeriesDetails] Invalid item response:', item);
+      return res.status(404).json({ message: 'Series not found' });
+    }
+
+    // Check if the item is actually a series, not a movie
+    if (item.Type === 'Movie' || item.Type === 'Episode' || item.Type === 'Season') {
+      console.log('[getSeriesDetails] Item is not a series, it is:', item.Type);
+      return res.status(404).json({ message: 'Series not found' });
+    }
+
+    // Get seasons for the series
     const seasons = await jellyfinService.getSeasons(id);
 
     const seriesData = {
@@ -1442,10 +1471,26 @@ export const getSeriesDetails = async (req: Request, res: Response) => {
       })),
     };
 
+    console.log('[getSeriesDetails] Successfully returning series:', seriesData.title);
     res.json(seriesData);
-  } catch (error) {
-    console.error('Get series details error:', error);
-    res.status(500).json({ message: 'Failed to fetch series details' });
+  } catch (error: any) {
+    console.error('[getSeriesDetails] Error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      stack: error.stack,
+    });
+    
+    // If it's a 404 from Jellyfin, return 404
+    if (error.response?.status === 404) {
+      return res.status(404).json({ message: 'Series not found' });
+    }
+    
+    // Otherwise return 500 with error details
+    res.status(500).json({ 
+      message: 'Failed to fetch series details',
+      error: error.message 
+    });
   }
 };
 
