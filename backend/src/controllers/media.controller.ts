@@ -514,7 +514,8 @@ export const proxyStream = async (req: Request, res: Response) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    // Don't set Cache-Control header - let NGINX handle caching
+    // NGINX will add its own Cache-Control headers based on proxy_cache_valid settings
 
     // For M3U8 playlists, rewrite URLs to point to our proxy (RELATIVE URLs ONLY)
     if (filePath?.endsWith('.m3u8') || (!filePath && response.data)) {
