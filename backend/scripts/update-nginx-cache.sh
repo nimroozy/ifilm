@@ -82,14 +82,24 @@ fi
 # Create temporary config file
 TMP_CONFIG=$(mktemp)
 
-# Add cache zones at the top (before server block) if they exist
-if [ -n "$CACHE_ZONES" ]; then
-    echo -e "$CACHE_ZONES" > "$TMP_CONFIG"
-    echo "" >> "$TMP_CONFIG"
-fi
+# Read the base config
+BASE_CONTENT=$(cat "$NGINX_BASE")
 
-# Append base config content
-cat "$NGINX_BASE" >> "$TMP_CONFIG"
+# Check if cache zones need to be added to main nginx.conf (http block)
+# For now, we'll add them at the top of the server config (NGINX allows this in some contexts)
+# But ideally they should be in /etc/nginx/nginx.conf http block
+
+# Start with base config
+echo "$BASE_CONTENT" > "$TMP_CONFIG"
+
+# Insert cache zones right after "server {" line if they don't exist
+if [ -n "$CACHE_ZONES" ] && ! grep -q "proxy_cache_path" "$TMP_CONFIG"; then
+    # Add cache zones comment and zones before the server block content
+    sed -i "/^server {/a\\
+    # NGINX Cache Zones (auto-generated from database)\\
+$(echo -e "$CACHE_ZONES" | sed 's/^/    /')
+" "$TMP_CONFIG"
+fi
 
 # Enable cache directives in location blocks if cache is enabled
 if [ -n "${CACHE_CONFIGS[images]}" ]; then
