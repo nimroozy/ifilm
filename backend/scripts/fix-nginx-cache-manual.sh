@@ -40,11 +40,20 @@ sed -i '/location ~\* \^\/api\/media\/images\//,/^[[:space:]]*}/ {
     s|^[[:space:]]*# add_header X-Cache-Status|        add_header X-Cache-Status|
 }' "$TMP_CONFIG"
 
+# Also ensure proxy_buffering is ON in stream location (critical for caching)
+sed -i '/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
+    s|proxy_buffering off;|proxy_buffering on;|
+    /proxy_buffering on;/! {
+        /proxy_request_buffering off;/a\
+        proxy_buffering on;
+    }
+}' "$TMP_CONFIG"
+
 # Verify changes
 echo ""
 echo "📋 Verifying cache directives are enabled:"
 echo "--- Stream location:"
-grep -A 10 "location ~\* \^\/api\/media\/stream" "$TMP_CONFIG" | grep -E "proxy_cache|proxy_buffering" | head -5
+grep -A 15 "location ~\* \^\/api\/media\/stream" "$TMP_CONFIG" | grep -E "proxy_cache|proxy_buffering" | head -8
 
 echo ""
 echo "--- Images location:"
