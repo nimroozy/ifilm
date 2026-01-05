@@ -730,6 +730,73 @@ export const getR2FileInfo = async (key: string): Promise<R2File> => {
   }
 };
 
+// Cache Configuration
+export interface CacheConfig {
+  id: string;
+  cache_type: 'images' | 'videos' | 'all';
+  max_size: string;
+  inactive_time: string;
+  cache_valid_200: string;
+  cache_valid_404: string;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getCacheConfig = async (type?: 'images' | 'videos' | 'all'): Promise<CacheConfig[]> => {
+  try {
+    const params = type ? { type } : {};
+    const response = await api.get('/admin/cache/config', { params });
+    if (response.data.success) {
+      return response.data.configs || [];
+    }
+    return [];
+  } catch (error: any) {
+    console.error('Error fetching cache config:', error);
+    return [];
+  }
+};
+
+export const saveCacheConfig = async (config: {
+  cacheType: 'images' | 'videos' | 'all';
+  maxSize: string;
+  inactiveTime: string;
+  cacheValid200?: string;
+  cacheValid404?: string;
+  isEnabled?: boolean;
+}): Promise<{ success: boolean; message: string; config?: CacheConfig }> => {
+  try {
+    const response = await api.post('/admin/cache/config', config);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error saving cache config:', error);
+    throw new Error(error.response?.data?.message || error.response?.data?.detailedError || 'Failed to save cache configuration');
+  }
+};
+
+export const updateCacheConfigEnabled = async (
+  cacheType: 'images' | 'videos' | 'all',
+  isEnabled: boolean
+): Promise<{ success: boolean; message: string; config?: CacheConfig }> => {
+  try {
+    const response = await api.put(`/admin/cache/config/${cacheType}/enabled`, { isEnabled });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error updating cache config:', error);
+    throw new Error(error.response?.data?.message || error.response?.data?.detailedError || 'Failed to update cache configuration');
+  }
+};
+
+export const reloadNginxConfig = async (): Promise<{ success: boolean; message: string; testOutput?: string; reloadOutput?: string }> => {
+  try {
+    const response = await api.post('/admin/cache/nginx/reload');
+    return response.data;
+  } catch (error: any) {
+    console.error('Error reloading NGINX:', error);
+    throw new Error(error.response?.data?.message || error.response?.data?.detailedError || 'Failed to reload NGINX');
+  }
+};
+
 // Cache Management
 export interface ClearCacheResult {
   success: boolean;

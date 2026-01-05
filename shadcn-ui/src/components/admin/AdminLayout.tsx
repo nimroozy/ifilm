@@ -14,6 +14,7 @@ interface AdminLayoutProps {
 const menuItems = [
   { path: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/admin/jellyfin-settings', label: 'Jellyfin Settings', icon: Settings },
+  { path: '/admin/cache-settings', label: 'Cache Settings', icon: HardDrive },
   { path: '/admin/r2-settings', label: 'R2 Settings', icon: Cloud },
   { path: '/admin/r2-files', label: 'R2 File Manager', icon: FolderOpen },
   { path: '/admin/libraries', label: 'Library Management', icon: Library },

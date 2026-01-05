@@ -166,6 +166,14 @@ const App = () => (
               }
             />
             <Route
+              path="/admin/cache-settings"
+              element={
+                <AdminRoute>
+                  <CacheSettings />
+                </AdminRoute>
+              }
+            />
+            <Route
               path="/admin/r2-settings"
               element={
                 <AdminRoute>
