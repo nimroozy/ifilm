@@ -1,10 +1,24 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Loader2, X, Languages, Gauge } from 'lucide-react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
 import { resolveMediaUrl, getPlaceholderImage } from '@/utils/urlSanitizer';
+import {
+  getPlayerPreferences,
+  savePlayerPreferences,
+  getLastPosition,
+  saveLastPosition,
+  getSavedAudioTrack,
+  saveAudioTrack,
+  getSavedPlaybackSpeed,
+  savePlaybackSpeed,
+  getSavedVolume,
+  saveVolume,
+  getSavedMuted,
+  saveMuted,
+} from '@/utils/playerPreferences';
 
 interface MediaDetails {
   id: string;
@@ -59,6 +73,11 @@ export default function Watch() {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [videoQuality, setVideoQuality] = useState<string>('auto');
+  const [timelineHoverTime, setTimelineHoverTime] = useState<number | null>(null);
+  const [timelineHoverPosition, setTimelineHoverPosition] = useState<number>(0);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const saveProgressTimeoutRef = useRef<number | null>(null);
+  const hasResumedRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!id) {
@@ -67,10 +86,37 @@ export default function Watch() {
       return;
     }
 
+    // Reset resume flag when media changes
+    hasResumedRef.current = false;
+    
+    // Load saved preferences
+    const savedPrefs = getPlayerPreferences(id);
+    if (savedPrefs.audioTrack !== undefined && savedPrefs.audioTrack !== null) {
+      setSelectedAudioTrack(savedPrefs.audioTrack);
+    }
+    if (savedPrefs.playbackSpeed) {
+      setPlaybackSpeed(savedPrefs.playbackSpeed);
+    }
+    const savedVolume = getSavedVolume();
+    if (savedVolume !== undefined) {
+      setVolume(savedVolume);
+    }
+    const savedMuted = getSavedMuted();
+    if (savedMuted !== undefined) {
+      setIsMuted(savedMuted);
+    }
+    
     // Clear any existing stream URL on mount
     setStreamUrl(null);
     
     loadMediaDetails();
+    
+    // Cleanup on unmount
+    return () => {
+      if (saveProgressTimeoutRef.current) {
+        clearTimeout(saveProgressTimeoutRef.current);
+      }
+    };
   }, [id]);
 
   useEffect(() => {
@@ -280,8 +326,24 @@ export default function Watch() {
     // Set up event listeners
     const handleTimeUpdate = () => {
       if (video.duration) {
-        setProgress(video.currentTime);
+        const currentTime = video.currentTime;
+        setProgress(currentTime);
         setDuration(video.duration);
+        
+        // Save progress to localStorage (throttled)
+        if (media?.id && currentTime > 0) {
+          saveLastPosition(media.id, currentTime);
+          
+          // Save to backend watch history (throttled - every 10 seconds)
+          if (saveProgressTimeoutRef.current === null) {
+            saveProgressTimeoutRef.current = window.setTimeout(() => {
+              if (media?.id && video.duration) {
+                saveWatchProgress(media.id, currentTime, video.duration);
+                saveProgressTimeoutRef.current = null;
+              }
+            }, 10000); // Save every 10 seconds
+          }
+        }
       }
     };
 
@@ -344,6 +406,11 @@ export default function Watch() {
         if (videoRef.current) {
           videoRef.current.playbackRate = playbackSpeed;
         }
+        
+        // Resume playback position after metadata is loaded
+        if (media?.id && !hasResumedRef.current) {
+          resumePlayback(media.id);
+        }
       });
       
       // Listen for audio track changes
@@ -404,6 +471,11 @@ export default function Watch() {
             }
           }
         }
+        
+        // Resume playback position after metadata is loaded
+        if (media?.id && !hasResumedRef.current) {
+          resumePlayback(media.id);
+        }
       });
     } else {
       setError('HLS playback not supported in this browser');
@@ -416,6 +488,57 @@ export default function Watch() {
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('volumechange', handleVolumeChange);
     };
+  };
+
+  // Save watch progress to backend
+  const saveWatchProgress = async (mediaId: string, progress: number, duration: number) => {
+    try {
+      await api.post('/watch-history/progress', {
+        mediaId,
+        mediaType: 'movie',
+        progress: Math.floor(progress),
+        duration: Math.floor(duration),
+        mediaTitle: media?.title,
+      });
+    } catch (error: any) {
+      // Silently fail - localStorage is the fallback
+      console.warn('[Watch] Failed to save progress to backend:', error.message);
+    }
+  };
+
+  // Resume playback from saved position
+  const resumePlayback = async (mediaId: string) => {
+    if (hasResumedRef.current || !videoRef.current) return;
+    
+    try {
+      // Try to get progress from backend first
+      let savedProgress = 0;
+      try {
+        const response = await api.get(`/watch-history/progress/${mediaId}`);
+        savedProgress = response.data.progress || 0;
+      } catch (error: any) {
+        // Fallback to localStorage
+        savedProgress = getLastPosition(mediaId);
+      }
+      
+      // Only resume if progress is significant (> 10 seconds and < 90% watched)
+      if (savedProgress > 10 && videoRef.current.duration) {
+        const percentage = (savedProgress / videoRef.current.duration) * 100;
+        if (percentage < 90) {
+          videoRef.current.currentTime = savedProgress;
+          console.log('[Watch] Resumed playback from:', savedProgress, 'seconds');
+          
+          // Show resume notification
+          toast.info(`Resumed from ${formatTime(savedProgress)}`, {
+            duration: 3000,
+          });
+        }
+      }
+      
+      hasResumedRef.current = true;
+    } catch (error) {
+      console.error('[Watch] Error resuming playback:', error);
+    }
   };
 
   const togglePlay = () => {
@@ -441,6 +564,9 @@ export default function Watch() {
     if (videoRef.current) {
       videoRef.current.playbackRate = speed;
       setPlaybackSpeed(speed);
+      if (media?.id) {
+        savePlaybackSpeed(media.id, speed);
+      }
       setShowSettingsMenu(false);
     }
   };
@@ -480,6 +606,8 @@ export default function Watch() {
       videoRef.current.volume = newVolume;
       setVolume(newVolume);
       setIsMuted(newVolume === 0);
+      saveVolume(newVolume);
+      saveMuted(newVolume === 0);
     }
   };
 
@@ -538,6 +666,75 @@ export default function Watch() {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
     };
   }, [playerSize]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          if (videoRef.current) {
+            videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+          }
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (videoRef.current && videoRef.current.duration) {
+            videoRef.current.currentTime = Math.min(
+              videoRef.current.duration,
+              videoRef.current.currentTime + 10
+            );
+          }
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          if (videoRef.current) {
+            const newVolume = Math.min(1, videoRef.current.volume + 0.1);
+            videoRef.current.volume = newVolume;
+            setVolume(newVolume);
+            setIsMuted(false);
+            saveVolume(newVolume);
+            saveMuted(false);
+          }
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          if (videoRef.current) {
+            const newVolume = Math.max(0, videoRef.current.volume - 0.1);
+            videoRef.current.volume = newVolume;
+            setVolume(newVolume);
+            setIsMuted(newVolume === 0);
+            saveVolume(newVolume);
+            saveMuted(newVolume === 0);
+          }
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'm':
+        case 'M':
+          e.preventDefault();
+          toggleMute();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPlaying, volume, isMuted]);
 
   // Check AirPlay availability and set attributes
   useEffect(() => {
@@ -667,15 +864,15 @@ export default function Watch() {
   }
 
   return (
-    <div className="min-h-screen bg-[#141414] relative overflow-hidden">
-      {/* Backdrop with blur effect */}
+    <div className="min-h-screen bg-[#0A0A0A] relative overflow-hidden">
+      {/* Enhanced Backdrop with darker cinema effect */}
       {media.backdropUrl && (
         <div className="absolute inset-0">
           <div
-            className="absolute inset-0 bg-cover bg-center"
+            className="absolute inset-0 bg-cover bg-center scale-105"
             style={{ backgroundImage: `url(${media.backdropUrl})` }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#141414]/95 via-[#141414]/80 to-[#141414] backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0A]/98 via-[#0A0A0A]/95 to-[#0A0A0A] backdrop-blur-md" />
         </div>
       )}
 
@@ -720,15 +917,15 @@ export default function Watch() {
         </div>
       </div>
 
-      {/* Video Player - Only show if we have a stream URL */}
+      {/* Video Player - Larger and more prominent */}
       {streamUrl && (
         <div
-          className={`relative z-10 mt-6 transition-all duration-300 ${
+          className={`relative z-10 mt-4 mb-8 transition-all duration-300 ${
             playerSize === 'small' 
-              ? 'w-full max-w-4xl mx-auto' 
+              ? 'w-full max-w-6xl mx-auto px-4' 
               : playerSize === 'medium'
-              ? 'w-full max-w-7xl mx-auto'
-              : 'w-full'
+              ? 'w-full max-w-7xl mx-auto px-4'
+              : 'w-full px-0'
           }`}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
@@ -759,15 +956,15 @@ export default function Watch() {
               </div>
             )}
 
-            {/* Professional Play/Pause Button Overlay */}
+            {/* Enhanced Play/Pause Button Overlay - Larger and more prominent */}
             {showControls && !isPlaying && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm z-10">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-md z-10">
                 <button
                   onClick={togglePlay}
-                  className="bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full p-8 transition-all transform hover:scale-110 border-2 border-white/20 hover:border-white/40"
+                  className="bg-[#E50914]/90 hover:bg-[#E50914] backdrop-blur-md rounded-full p-10 transition-all transform hover:scale-110 shadow-2xl border-4 border-white/30 hover:border-white/50"
                   aria-label="Play"
                 >
-                  <Play className="h-20 w-20 text-white" fill="currentColor" />
+                  <Play className="h-24 w-24 text-white" fill="currentColor" />
                 </button>
               </div>
             )}
@@ -778,53 +975,82 @@ export default function Watch() {
                 showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
             >
-              {/* Progress Bar */}
+              {/* Progress Bar with Hover Time */}
               <div className="px-6 pt-3 pb-2">
-                <div className="relative">
-                  <div className="absolute inset-0 h-1 bg-white/20 rounded-full" />
+                <div 
+                  className="relative"
+                  ref={timelineRef}
+                  onMouseMove={(e) => {
+                    if (!timelineRef.current || !duration) return;
+                    const rect = timelineRef.current.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const percentage = Math.max(0, Math.min(1, x / rect.width));
+                    const hoverTime = percentage * duration;
+                    setTimelineHoverTime(hoverTime);
+                    setTimelineHoverPosition(x);
+                  }}
+                  onMouseLeave={() => {
+                    setTimelineHoverTime(null);
+                  }}
+                >
+                  <div className="absolute inset-0 h-1.5 bg-white/20 rounded-full" />
                   <div 
-                    className="absolute inset-y-0 left-0 h-1 bg-[#E50914] rounded-full transition-all duration-150"
+                    className="absolute inset-y-0 left-0 h-1.5 bg-[#E50914] rounded-full transition-all duration-150"
                     style={{ width: `${(progress / (duration || 1)) * 100}%` }}
                   />
+                  {/* Hover Time Tooltip */}
+                  {timelineHoverTime !== null && (
+                    <div
+                      className="absolute bottom-full mb-2 transform -translate-x-1/2 pointer-events-none z-20"
+                      style={{ left: `${timelineHoverPosition}px` }}
+                    >
+                      <div className="bg-black/95 text-white text-xs font-mono px-2 py-1 rounded whitespace-nowrap shadow-lg border border-white/20">
+                        {formatTime(timelineHoverTime)}
+                      </div>
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black/95" />
+                    </div>
+                  )}
                   <input
                     type="range"
                     min="0"
                     max={duration || 100}
                     value={progress}
                     onChange={handleSeek}
-                    className="absolute inset-0 w-full h-1 opacity-0 cursor-pointer z-10"
+                    className="absolute inset-0 w-full h-1.5 opacity-0 cursor-pointer z-10"
                   />
                 </div>
               </div>
 
-              {/* Control Buttons */}
+              {/* Enhanced Control Buttons - Larger and clearer */}
               <div className="px-6 pb-6 flex items-center gap-4">
                 <button
                   onClick={togglePlay}
-                  className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
+                  className="text-white hover:text-white transition-all p-3 rounded-full hover:bg-white/25 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30"
                   aria-label={isPlaying ? 'Pause' : 'Play'}
+                  title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
                 >
                   {isPlaying ? (
-                    <Pause className="h-6 w-6" fill="currentColor" />
+                    <Pause className="h-7 w-7" fill="currentColor" />
                   ) : (
-                    <Play className="h-6 w-6" fill="currentColor" />
+                    <Play className="h-7 w-7" fill="currentColor" />
                   )}
                 </button>
 
-                {/* Volume Control */}
+                {/* Enhanced Volume Control */}
                 <div className="flex items-center gap-2 group">
                   <button
                     onClick={toggleMute}
-                    className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
+                    className="text-white hover:text-white transition-all p-3 rounded-full hover:bg-white/25 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30"
                     aria-label={isMuted ? 'Unmute' : 'Mute'}
+                    title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
                   >
                     {isMuted || volume === 0 ? (
-                      <VolumeX className="h-5 w-5" />
+                      <VolumeX className="h-6 w-6" />
                     ) : (
-                      <Volume2 className="h-5 w-5" />
+                      <Volume2 className="h-6 w-6" />
                     )}
                   </button>
-                  <div className="w-0 group-hover:w-24 overflow-hidden transition-all duration-300">
+                  <div className="w-0 group-hover:w-28 overflow-hidden transition-all duration-300">
                     <input
                       type="range"
                       min="0"
@@ -832,7 +1058,7 @@ export default function Watch() {
                       step="0.01"
                       value={isMuted ? 0 : volume}
                       onChange={handleVolumeChange}
-                      className="w-24 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[#E50914]"
+                      className="w-28 h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[#E50914]"
                       style={{
                         background: `linear-gradient(to right, #E50914 0%, #E50914 ${(isMuted ? 0 : volume) * 100}%, rgba(255,255,255,0.2) ${(isMuted ? 0 : volume) * 100}%, rgba(255,255,255,0.2) 100%)`
                       }}
@@ -840,11 +1066,11 @@ export default function Watch() {
                   </div>
                 </div>
 
-                {/* Time Display */}
-                <div className="text-white text-sm font-medium ml-2 font-mono tracking-wide">
+                {/* Enhanced Time Display */}
+                <div className="text-white text-base font-semibold ml-2 font-mono tracking-wide">
                   <span className="text-white">{formatTime(progress)}</span>
-                  <span className="text-white/60 mx-1">/</span>
-                  <span className="text-white/60">{formatTime(duration)}</span>
+                  <span className="text-white/50 mx-1.5">/</span>
+                  <span className="text-white/70">{formatTime(duration)}</span>
                 </div>
 
                 {/* Right Side Controls */}
@@ -1111,23 +1337,15 @@ export default function Watch() {
                     </svg>
                   </button>
                   <button
-                    onClick={togglePlayerSize}
-                    className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
-                    aria-label="Toggle player size"
-                    title={
-                      playerSize === 'small' 
-                        ? 'Medium' 
-                        : playerSize === 'medium' 
-                        ? 'Fullscreen' 
-                        : 'Small'
-                    }
+                    onClick={toggleFullscreen}
+                    className="text-white hover:text-white transition-all p-3 rounded-full hover:bg-white/25 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30"
+                    aria-label="Toggle fullscreen"
+                    title="Fullscreen (F)"
                   >
-                    {playerSize === 'small' ? (
-                      <Square className="h-5 w-5" />
-                    ) : playerSize === 'medium' ? (
-                      <Maximize className="h-5 w-5" />
+                    {document.fullscreenElement ? (
+                      <Minimize2 className="h-6 w-6" />
                     ) : (
-                      <Minimize2 className="h-5 w-5" />
+                      <Maximize className="h-6 w-6" />
                     )}
                   </button>
                 </div>
@@ -1137,37 +1355,24 @@ export default function Watch() {
         </div>
       )}
 
-      {/* Media Info Below Player */}
-      <div className="relative z-10 mt-8 px-6 md:px-12 pb-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-6">
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-3 leading-tight">
-              {media.title}
-            </h1>
-            <div className="flex flex-wrap items-center gap-4 text-white/90 mb-4">
-              <span className="font-medium">{media.year}</span>
-              <span className="text-white/40">•</span>
-              <span className="font-medium">{Math.floor(media.duration / 60)} min</span>
-              <span className="text-white/40">•</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-yellow-400">⭐</span>
-                <span className="font-semibold">{media.rating.toFixed(1)}</span>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 mb-4">
+      {/* Media Info Below Player - Enhanced layout */}
+      <div className="relative z-10 mt-12 px-6 md:px-12 pb-12">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-8">
+            <div className="flex flex-wrap gap-3 mb-6">
               {media.genres.map((genre) => (
                 <span
                   key={genre}
-                  className="px-3 py-1.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full text-sm font-medium text-white hover:bg-white/20 transition-colors"
+                  className="px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full text-sm font-semibold text-white hover:bg-white/20 transition-colors"
                 >
                   {genre}
                 </span>
               ))}
             </div>
             {media.overview && (
-              <div className="mt-4">
-                <h2 className="text-xl font-semibold text-white mb-3">About</h2>
-                <p className="text-gray-300 leading-relaxed text-base max-w-3xl">
+              <div className="mt-6">
+                <h2 className="text-2xl font-bold text-white mb-4">About</h2>
+                <p className="text-gray-200 leading-relaxed text-lg max-w-4xl">
                   {media.overview}
                 </p>
               </div>
