@@ -973,7 +973,10 @@ export const proxyStream = async (req: Request, res: Response) => {
           }
           
           // If it's a relative path (like hls1/main/0.ts or main.m3u8), prepend our proxy base
+          // When using HLS playlist, segments are relative to the playlist, so we need to preserve that structure
           if (!urlPath.startsWith('http') && !urlPath.startsWith('/')) {
+            // If we're using an HLS playlist, the segments should be requested from the HLS playlist path
+            // But since we're proxying, we can just use the relative path - our proxy will handle it
             return finalQueryString ? `${proxyBase}/${urlPath}?${finalQueryString}` : `${proxyBase}/${urlPath}`;
           }
           
