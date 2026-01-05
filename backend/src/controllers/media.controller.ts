@@ -1029,10 +1029,21 @@ export const proxyStream = async (req: Request, res: Response) => {
           // Build query params: merge existing params with audioTrack/mediaSourceId/hlsPlaylistId
           // ALWAYS include these params so segments can use them as fallback
           const queryParams = new URLSearchParams(existingQueryString);
-          if (audioStreamIndex !== null) {
+          // IMPORTANT: Use audioTrackIndex (from query params) in rewritten URLs, not audioStreamIndex
+          // This ensures segments can extract audioTrack from their URLs
+          // audioTrackIndex is what the frontend passes, so we preserve it
+          if (audioTrackIndex !== null) {
+            const audioIndex = Number(audioTrackIndex);
+            if (!isNaN(audioIndex)) {
+              queryParams.set('audioTrack', audioIndex.toString());
+              console.log('[proxyStream] Adding audioTrack to rewritten URL:', audioIndex);
+            }
+          } else if (audioStreamIndex !== null) {
+            // Fallback to audioStreamIndex if audioTrackIndex not available
             const audioIndex = Number(audioStreamIndex);
             if (!isNaN(audioIndex)) {
               queryParams.set('audioTrack', audioIndex.toString());
+              console.log('[proxyStream] Adding audioStreamIndex as audioTrack to rewritten URL:', audioIndex);
             }
           }
           if (mediaSourceId) {
