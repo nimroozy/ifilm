@@ -790,7 +790,7 @@ export const proxyStream = async (req: Request, res: Response) => {
       urlParams.append('MediaSourceId', mediaSourceId);
     }
     // Add AudioStreamIndex if specified (Jellyfin uses this to select audio track)
-    if (audioStreamIndex !== null) {
+    if (audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
       urlParams.append('AudioStreamIndex', audioStreamIndex.toString());
       console.log('[proxyStream] Adding AudioStreamIndex to request:', audioStreamIndex);
     }
@@ -818,7 +818,7 @@ export const proxyStream = async (req: Request, res: Response) => {
           segmentParams.append('MediaSourceId', mediaSourceId);
         }
         // Only include AudioStreamIndex if NOT from HLS playlist (HLS playlist segments already have correct audio)
-        if (audioStreamIndex !== null && !isFromHlsPlaylist) {
+        if (audioStreamIndex !== null && typeof audioStreamIndex === 'number' && !isFromHlsPlaylist) {
           segmentParams.append('AudioStreamIndex', audioStreamIndex.toString());
         }
         
