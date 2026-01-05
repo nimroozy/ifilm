@@ -123,21 +123,16 @@ sudo sed -i '/proxy_cache_path/d' "$TMP_CONFIG"
 if [ -n "${CACHE_CONFIGS[images]}" ]; then
     IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
     # Uncomment cache directives for images within the location block
-    # Match prefix location pattern (^~ /api/media/images/)
-    # Use a more flexible pattern to match the closing brace
-    sed -i '/location ^~ \/api\/media\/images\//,/^[[:space:]]*location\|^[[:space:]]*# Video\|^}$/ {
-        s|^[[:space:]]*# proxy_cache images_cache;|        proxy_cache images_cache;|
-        s|^[[:space:]]*# proxy_cache_valid 200|        proxy_cache_valid 200|
-        s|^[[:space:]]*# proxy_cache_valid 404|        proxy_cache_valid 404|
-        s|^[[:space:]]*# proxy_cache_use_stale|        proxy_cache_use_stale|
-        s|^[[:space:]]*# proxy_cache_background_update|        proxy_cache_background_update|
-        s|^[[:space:]]*# add_header X-Cache-Status|        add_header X-Cache-Status|
-    }' "$TMP_CONFIG"
+    # Use individual sed commands with range pattern matching closing brace (4 spaces + })
+    sed -i '/location ^~ \/api\/media\/images\//,/^    }/s/^        # proxy_cache images_cache;/        proxy_cache images_cache;/' "$TMP_CONFIG"
+    sed -i '/location ^~ \/api\/media\/images\//,/^    }/s/^        # proxy_cache_valid 200/        proxy_cache_valid 200/' "$TMP_CONFIG"
+    sed -i '/location ^~ \/api\/media\/images\//,/^    }/s/^        # proxy_cache_valid 404/        proxy_cache_valid 404/' "$TMP_CONFIG"
+    sed -i '/location ^~ \/api\/media\/images\//,/^    }/s/^        # proxy_cache_use_stale/        proxy_cache_use_stale/' "$TMP_CONFIG"
+    sed -i '/location ^~ \/api\/media\/images\//,/^    }/s/^        # proxy_cache_background_update/        proxy_cache_background_update/' "$TMP_CONFIG"
+    sed -i '/location ^~ \/api\/media\/images\//,/^    }/s/^        # add_header X-Cache-Status/        add_header X-Cache-Status/' "$TMP_CONFIG"
     # Replace the cache_valid lines with actual values from database
-    sed -i "/location ^~ \/api\/media\/images\//,/^[[:space:]]*location\|^[[:space:]]*# Video\|^}$/ {
-        s|proxy_cache_valid 200 30d|proxy_cache_valid 200 ${cache_valid_200}|
-        s|proxy_cache_valid 404 1h|proxy_cache_valid 404 ${cache_valid_404}|
-    }" "$TMP_CONFIG"
+    sed -i "/location ^~ \/api\/media\/images\//,/^    }/s|proxy_cache_valid 200 30d|proxy_cache_valid 200 ${cache_valid_200}|" "$TMP_CONFIG"
+    sed -i "/location ^~ \/api\/media\/images\//,/^    }/s|proxy_cache_valid 404 1h|proxy_cache_valid 404 ${cache_valid_404}|" "$TMP_CONFIG"
 fi
 
 if [ -n "${CACHE_CONFIGS[videos]}" ]; then
