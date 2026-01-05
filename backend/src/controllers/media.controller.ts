@@ -837,7 +837,7 @@ export const proxyStream = async (req: Request, res: Response) => {
           targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${normalizedFilePath}?${segmentParams.toString()}`;
           console.log('[proxyStream] ✅ Requesting segment from HLS playlist:', {
             playlistId: hlsPlaylistId,
-            filePath,
+            filePath: normalizedFilePath,
             targetUrl,
             isFromHlsPlaylist,
             hasPlaylistId: !!hlsPlaylistId,
