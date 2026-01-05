@@ -738,6 +738,11 @@ export const proxyStream = async (req: Request, res: Response) => {
       // Rewrite URLs in the playlist to RELATIVE paths only
       // Replace relative paths and Jellyfin URLs with our proxy URLs
       // Preserve query parameters (runtimeTicks, actualSegmentLengthTicks) for segment URLs
+      // IMPORTANT: Also preserve audioTrack and mediaSourceId query params for variant playlists and segments
+      const audioTrackParam = audioStreamIndex !== null ? `audioTrack=${audioStreamIndex}` : '';
+      const mediaSourceParam = mediaSourceId ? `mediaSourceId=${mediaSourceId}` : '';
+      const preservedParams = [audioTrackParam, mediaSourceParam].filter(p => p).join('&');
+      
       const rewrittenPlaylist = playlistContent
         .split('\n')
         .map((line: string) => {
