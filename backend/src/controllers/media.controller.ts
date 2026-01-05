@@ -322,9 +322,11 @@ export const proxyStream = async (req: Request, res: Response) => {
     // The regex route /^\/stream\/([^\/]+)(?:\/(.+))?$/ captures:
     // - Group 1: the id
     // - Group 2: the file path (optional)
-    const pathMatch = req.path.match(/^\/stream\/([^\/]+)(?:\/(.+))?$/);
+    // Note: req.path includes the full path including route prefix (/api/media/stream/...)
+    // So we need to match from /stream/ onwards
+    const pathMatch = req.path.match(/\/stream\/([^\/]+)(?:\/(.+))?$/);
     if (!pathMatch) {
-      return res.status(400).json({ message: 'Invalid stream path' });
+      return res.status(400).json({ message: 'Invalid stream path', path: req.path });
     }
     const id = pathMatch[1];
     const filePath = pathMatch[2] || '';
