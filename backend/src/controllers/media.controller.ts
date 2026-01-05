@@ -642,6 +642,7 @@ export const proxyStream = async (req: Request, res: Response) => {
     
     let mediaSourceId: string | null = null;
     let audioStreamIndex: number | null = null;
+    let hlsPlaylistId: string | null = null; // Store playlistId when using /hls endpoint
     
     try {
       // Use userId endpoint to get item with user context
@@ -800,6 +801,8 @@ export const proxyStream = async (req: Request, res: Response) => {
           // Extract playlistId from response
           const playlistId = hlsCreateResponse.data?.PlaylistId || hlsCreateResponse.data?.Id;
           if (playlistId) {
+            // Store playlistId for URL rewriting
+            hlsPlaylistId = playlistId;
             // Use the generated playlist
             targetUrl = `${serverUrl}/Videos/${id}/hls/${playlistId}/stream.m3u8?${urlParams.toString()}`;
             console.log('[proxyStream] ✅ Created HLS playlist with audio track:', {
@@ -809,6 +812,7 @@ export const proxyStream = async (req: Request, res: Response) => {
             });
           } else {
             console.warn('[proxyStream] ⚠️ No playlistId in HLS create response, falling back to master.m3u8');
+            console.log('[proxyStream] HLS create response data:', JSON.stringify(hlsCreateResponse.data, null, 2));
             targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
           }
         } catch (hlsError: any) {
@@ -877,9 +881,12 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
       
       // Debug: Log playlist content when audio track is specified
-      if (audioStreamIndex !== null) {
-        console.log('[proxyStream] Playlist content (first 1000 chars) with AudioStreamIndex:', audioStreamIndex);
-        console.log('[proxyStream]', playlistContent.substring(0, 1000));
+      if (audioStreamIndex !== null || hlsPlaylistId) {
+        console.log('[proxyStream] Playlist content (first 1000 chars):', {
+          audioStreamIndex,
+          hlsPlaylistId,
+          content: playlistContent.substring(0, 1000),
+        });
         console.log('[proxyStream] Playlist length:', playlistContent.length);
         // Check if playlist contains audio track references
         const hasAudioGroup = playlistContent.includes('GROUP-ID="audio"') || playlistContent.includes('GROUP-ID="aud');
@@ -888,8 +895,13 @@ export const proxyStream = async (req: Request, res: Response) => {
           hasAudioGroup,
           hasAudioStream,
           lines: playlistContent.split('\n').length,
+          usingHlsPlaylist: !!hlsPlaylistId,
         });
       }
+      
+      // When using HLS playlist (hlsPlaylistId is set), segments already have correct audio track
+      // Don't add audioTrack query params to segments - they're already in the playlist
+      const shouldPreserveAudioTrack = !hlsPlaylistId && audioStreamIndex !== null;
 
       // Rewrite URLs in the playlist to RELATIVE paths only
       // Replace relative paths and Jellyfin URLs with our proxy URLs
@@ -915,11 +927,14 @@ export const proxyStream = async (req: Request, res: Response) => {
           const existingQueryString = urlParts[1] || '';
           
           // Build query params: merge existing params with audioTrack/mediaSourceId
+          // NOTE: When using HLS playlist (hlsPlaylistId), segments already have correct audio track
+          // Only add audioTrack param if NOT using HLS playlist
           const queryParams = new URLSearchParams(existingQueryString);
-          if (audioStreamIndex !== null) {
-            queryParams.set('audioTrack', audioStreamIndex.toString());
+          if (shouldPreserveAudioTrack) {
+            queryParams.set('audioTrack', audioStreamIndex!.toString());
           }
-          if (mediaSourceId) {
+          if (mediaSourceId && !hlsPlaylistId) {
+            // Only add mediaSourceId if not using HLS playlist (it's already in the playlist path)
             queryParams.set('mediaSourceId', mediaSourceId);
           }
           const finalQueryString = queryParams.toString();
