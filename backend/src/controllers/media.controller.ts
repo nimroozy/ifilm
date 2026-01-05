@@ -326,20 +326,16 @@ export const proxyStream = async (req: Request, res: Response) => {
     // So /api/media/stream/id/master.m3u8 becomes /stream/id/master.m3u8 in req.path
     // But req.url contains the full path, so we can use either
     
-    // Extract id and filePath from the matched route
-    // The regex route /^\/stream\/(.+)$/ captures everything after /stream/
-    // req.params[0] contains the matched group from the regex
-    // For /stream/id/master.m3u8, req.params[0] = "id/master.m3u8"
-    // For /stream/id/hls1/main/0.ts, req.params[0] = "id/hls1/main/0.ts"
+    // Extract id and filePath from req.path
+    // When mounted at /api/media, req.path is relative to the mount point
+    // So /api/media/stream/id/master.m3u8 becomes /stream/id/master.m3u8 in req.path
+    const streamPathMatch = req.path.match(/^\/stream\/(.+)$/);
     
-    const fullPath = (req.params as any)[0] || req.path.replace(/^\/stream\//, '') || req.url.replace(/^.*\/stream\//, '');
-    
-    if (!fullPath) {
-      console.error('[proxyStream] No path found:', {
+    if (!streamPathMatch) {
+      console.error('[proxyStream] Path match failed:', {
         path: req.path,
         url: req.url,
         originalUrl: req.originalUrl,
-        params: req.params,
       });
       return res.status(400).json({ 
         message: 'Invalid stream path', 
@@ -347,6 +343,9 @@ export const proxyStream = async (req: Request, res: Response) => {
         url: req.url,
       });
     }
+    
+    // streamPathMatch[1] contains everything after /stream/
+    const fullPath = streamPathMatch[1];
     
     // Split the path to get id and filePath
     const pathParts = fullPath.split('/');
