@@ -106,6 +106,9 @@ fi
 TMP_CONFIG=$(mktemp)
 sudo cp "$NGINX_BASE" "$TMP_CONFIG"
 
+# Remove any cache zone definitions from site config (they should only be in main nginx.conf)
+sudo sed -i '/proxy_cache_path/d' "$TMP_CONFIG"
+
 # Enable cache directives in location blocks if cache is enabled
 if [ -n "${CACHE_CONFIGS[images]}" ]; then
     IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
