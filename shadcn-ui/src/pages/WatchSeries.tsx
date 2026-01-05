@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Languages } from 'lucide-react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
@@ -56,6 +56,10 @@ export default function WatchSeries() {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [loadingStream, setLoadingStream] = useState(false);
+  const [audioTracks, setAudioTracks] = useState<Array<{ index: number; language: string; name: string; codec: string; mediaSourceId: string }>>([]);
+  const [selectedAudioTrack, setSelectedAudioTrack] = useState<number | null>(null);
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [currentMediaSourceId, setCurrentMediaSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -119,7 +123,7 @@ export default function WatchSeries() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl, selectedEpisode, loadingEpisodes]);
+  }, [streamUrl, selectedAudioTrack]);
 
   const loadSeriesDetails = async () => {
     try {
@@ -189,7 +193,7 @@ export default function WatchSeries() {
     }
   };
 
-  const loadStreamUrl = async (episodeId: string) => {
+  const loadStreamUrl = async (episodeId: string, audioTrackIndex?: number, mediaSourceId?: string) => {
     setLoadingStream(true);
     setError(null);
     try {
@@ -200,9 +204,33 @@ export default function WatchSeries() {
       const response = await api.get(endpoint);
       console.log('[WatchSeries] API response:', response.data);
       const streamUrlValue = response.data.streamUrl;
+      const tracks = response.data.audioTracks || [];
+      const defaultMediaSourceId = response.data.defaultMediaSourceId || null;
+      
+      // Set audio tracks and default media source
+      setAudioTracks(tracks);
+      setCurrentMediaSourceId(mediaSourceId || defaultMediaSourceId);
+      
+      // If audio track is specified, append it to the stream URL
+      let finalStreamUrl = streamUrlValue;
+      if (audioTrackIndex !== undefined && audioTrackIndex !== null && tracks.length > 0) {
+        const selectedTrack = tracks[audioTrackIndex];
+        if (selectedTrack) {
+          const url = new URL(streamUrlValue, window.location.origin);
+          url.searchParams.set('audioTrack', audioTrackIndex.toString());
+          if (selectedTrack.mediaSourceId) {
+            url.searchParams.set('mediaSourceId', selectedTrack.mediaSourceId);
+          }
+          finalStreamUrl = url.pathname + url.search;
+          setSelectedAudioTrack(audioTrackIndex);
+        }
+      } else if (tracks.length > 0) {
+        // Select first track by default
+        setSelectedAudioTrack(0);
+      }
       
       // Extract ID from stream URL to verify
-      const streamUrlIdMatch = streamUrlValue.match(/\/stream\/([^\/]+)/);
+      const streamUrlIdMatch = finalStreamUrl.match(/\/stream\/([^\/]+)/);
       const streamUrlId = streamUrlIdMatch ? streamUrlIdMatch[1] : null;
       
       // Verify the stream URL contains the episode ID
@@ -213,8 +241,9 @@ export default function WatchSeries() {
         return;
       }
       
-      console.log('[WatchSeries] Setting streamUrl to:', streamUrlValue);
-      setStreamUrl(streamUrlValue);
+      console.log('[WatchSeries] Setting streamUrl to:', finalStreamUrl);
+      console.log('[WatchSeries] Audio tracks available:', tracks.length);
+      setStreamUrl(finalStreamUrl);
       console.log('[WatchSeries] streamUrl state updated');
     } catch (err: any) {
       console.error('[WatchSeries] Failed to load stream URL:', err);
@@ -343,11 +372,37 @@ export default function WatchSeries() {
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('HLS manifest parsed, ready to play');
+        
+        // Set audio track if one is selected
+        if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
+          try {
+            const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
+            hls.audioTrack = trackIndex;
+            console.log('[WatchSeries] Set audio track to index:', trackIndex);
+          } catch (error) {
+            console.warn('[WatchSeries] Failed to set audio track:', error);
+          }
+        }
+        
         // Auto-play when manifest is parsed (user already interacted by clicking episode)
         video.play().catch(err => {
           console.error('Error auto-playing video:', err);
           // If autoplay fails, user can click play button
         });
+      });
+      
+      // Listen for audio track changes
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        console.log('[WatchSeries] Audio tracks updated:', hls.audioTracks.length);
+        if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
+          try {
+            const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
+            hls.audioTrack = trackIndex;
+            console.log('[WatchSeries] Set audio track to index:', trackIndex);
+          } catch (error) {
+            console.warn('[WatchSeries] Failed to set audio track:', error);
+          }
+        }
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
@@ -375,6 +430,23 @@ export default function WatchSeries() {
       // Native HLS support (Safari)
       video.src = resolveMediaUrl(streamUrl);
       video.load();
+      
+      // For native HLS, audio tracks are handled via video.audioTracks
+      video.addEventListener('loadedmetadata', () => {
+        if (selectedAudioTrack !== null && video.audioTracks.length > 0) {
+          const trackIndex = Math.min(selectedAudioTrack, video.audioTracks.length - 1);
+          if (video.audioTracks[trackIndex]) {
+            video.audioTracks[trackIndex].enabled = true;
+            // Disable other tracks
+            for (let i = 0; i < video.audioTracks.length; i++) {
+              if (i !== trackIndex) {
+                video.audioTracks[i].enabled = false;
+              }
+            }
+          }
+        }
+      });
+      
       // Auto-play for Safari (user already interacted by clicking episode)
       video.play().catch(err => {
         console.error('Error auto-playing video:', err);
@@ -829,6 +901,47 @@ export default function WatchSeries() {
 
                 {/* Right Side Controls */}
                 <div className="flex items-center gap-2 ml-auto">
+                  {/* Audio Track Selection */}
+                  {audioTracks.length > 1 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowAudioMenu(!showAudioMenu)}
+                        className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
+                        aria-label="Audio Tracks"
+                        title="Audio Tracks"
+                      >
+                        <Languages className="h-5 w-5" />
+                      </button>
+                      {showAudioMenu && (
+                        <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[200px] z-50">
+                          <div className="p-2">
+                            <div className="text-white text-xs font-semibold mb-2 px-2">Audio Tracks</div>
+                            {audioTracks.map((track, index) => (
+                              <button
+                                key={index}
+                                onClick={() => {
+                                  setSelectedAudioTrack(index);
+                                  setShowAudioMenu(false);
+                                  // Reload stream with new audio track
+                                  if (selectedEpisode) {
+                                    loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
+                                  }
+                                }}
+                                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                                  selectedAudioTrack === index
+                                    ? 'bg-[#E50914] text-white'
+                                    : 'text-white/80 hover:bg-white/10'
+                                }`}
+                              >
+                                <div className="font-medium">{track.name}</div>
+                                <div className="text-xs opacity-75">{track.language} • {track.codec}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <button
                     className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
                     aria-label="Settings"

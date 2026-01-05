@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Loader2, X } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Loader2, X, Languages } from 'lucide-react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
@@ -52,6 +52,10 @@ export default function Watch() {
   const [isAirPlayAvailable, setIsAirPlayAvailable] = useState(false);
   const [relatedMovies, setRelatedMovies] = useState<RelatedMovie[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
+  const [audioTracks, setAudioTracks] = useState<Array<{ index: number; language: string; name: string; codec: string; mediaSourceId: string }>>([]);
+  const [selectedAudioTrack, setSelectedAudioTrack] = useState<number | null>(null);
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [currentMediaSourceId, setCurrentMediaSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -86,7 +90,7 @@ export default function Watch() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl]);
+  }, [streamUrl, selectedAudioTrack]);
 
   const loadMediaDetails = async () => {
     try {
@@ -147,7 +151,7 @@ export default function Watch() {
   };
 
 
-  const loadStreamUrl = async (mediaId: string) => {
+  const loadStreamUrl = async (mediaId: string, audioTrackIndex?: number, mediaSourceId?: string) => {
     
     // Don't load stream URL if we're redirecting
     if (redirectingRef.current) {
@@ -162,13 +166,38 @@ export default function Watch() {
       console.log('[Watch] Calling backend endpoint:', endpoint);
       const response = await api.get(endpoint);
       const streamUrlValue = response.data.streamUrl;
+      const tracks = response.data.audioTracks || [];
+      const defaultMediaSourceId = response.data.defaultMediaSourceId || null;
+      
+      // Set audio tracks and default media source
+      setAudioTracks(tracks);
+      setCurrentMediaSourceId(mediaSourceId || defaultMediaSourceId);
+      
+      // If audio track is specified, append it to the stream URL
+      let finalStreamUrl = streamUrlValue;
+      if (audioTrackIndex !== undefined && audioTrackIndex !== null && tracks.length > 0) {
+        const selectedTrack = tracks[audioTrackIndex];
+        if (selectedTrack) {
+          const url = new URL(streamUrlValue, window.location.origin);
+          url.searchParams.set('audioTrack', audioTrackIndex.toString());
+          if (selectedTrack.mediaSourceId) {
+            url.searchParams.set('mediaSourceId', selectedTrack.mediaSourceId);
+          }
+          finalStreamUrl = url.pathname + url.search;
+          setSelectedAudioTrack(audioTrackIndex);
+        }
+      } else if (tracks.length > 0) {
+        // Select first track by default
+        setSelectedAudioTrack(0);
+      }
       
       
-      console.log('[Watch] Backend returned stream URL:', streamUrlValue);
+      console.log('[Watch] Backend returned stream URL:', finalStreamUrl);
+      console.log('[Watch] Audio tracks available:', tracks.length);
       
       // Double-check we're not redirecting before setting stream URL
       if (!redirectingRef.current) {
-        setStreamUrl(streamUrlValue);
+        setStreamUrl(finalStreamUrl);
       }
     } catch (err: any) {
       console.error('[Watch] Failed to load stream URL:', err);
@@ -249,6 +278,31 @@ export default function Watch() {
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('HLS manifest parsed, ready to play');
+        
+        // Set audio track if one is selected
+        if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
+          try {
+            const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
+            hls.audioTrack = trackIndex;
+            console.log('[Watch] Set audio track to index:', trackIndex);
+          } catch (error) {
+            console.warn('[Watch] Failed to set audio track:', error);
+          }
+        }
+      });
+      
+      // Listen for audio track changes
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        console.log('[Watch] Audio tracks updated:', hls.audioTracks.length);
+        if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
+          try {
+            const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
+            hls.audioTrack = trackIndex;
+            console.log('[Watch] Set audio track to index:', trackIndex);
+          } catch (error) {
+            console.warn('[Watch] Failed to set audio track:', error);
+          }
+        }
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
@@ -275,6 +329,22 @@ export default function Watch() {
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native HLS support (Safari)
       video.src = resolveMediaUrl(streamUrl);
+      
+      // For native HLS, audio tracks are handled via video.audioTracks
+      video.addEventListener('loadedmetadata', () => {
+        if (selectedAudioTrack !== null && video.audioTracks.length > 0) {
+          const trackIndex = Math.min(selectedAudioTrack, video.audioTracks.length - 1);
+          if (video.audioTracks[trackIndex]) {
+            video.audioTracks[trackIndex].enabled = true;
+            // Disable other tracks
+            for (let i = 0; i < video.audioTracks.length; i++) {
+              if (i !== trackIndex) {
+                video.audioTracks[i].enabled = false;
+              }
+            }
+          }
+        }
+      });
     } else {
       setError('HLS playback not supported in this browser');
     }
@@ -675,6 +745,47 @@ export default function Watch() {
 
                 {/* Right Side Controls */}
                 <div className="flex items-center gap-2 ml-auto">
+                  {/* Audio Track Selection */}
+                  {audioTracks.length > 1 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowAudioMenu(!showAudioMenu)}
+                        className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
+                        aria-label="Audio Tracks"
+                        title="Audio Tracks"
+                      >
+                        <Languages className="h-5 w-5" />
+                      </button>
+                      {showAudioMenu && (
+                        <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[200px] z-50">
+                          <div className="p-2">
+                            <div className="text-white text-xs font-semibold mb-2 px-2">Audio Tracks</div>
+                            {audioTracks.map((track, index) => (
+                              <button
+                                key={index}
+                                onClick={() => {
+                                  setSelectedAudioTrack(index);
+                                  setShowAudioMenu(false);
+                                  // Reload stream with new audio track
+                                  if (media?.id) {
+                                    loadStreamUrl(media.id, index, track.mediaSourceId);
+                                  }
+                                }}
+                                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                                  selectedAudioTrack === index
+                                    ? 'bg-[#E50914] text-white'
+                                    : 'text-white/80 hover:bg-white/10'
+                                }`}
+                              >
+                                <div className="font-medium">{track.name}</div>
+                                <div className="text-xs opacity-75">{track.language} • {track.codec}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <button
                     className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
                     aria-label="Settings"

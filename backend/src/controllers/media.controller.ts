@@ -301,6 +301,71 @@ export const getStreamUrl = async (req: Request, res: Response) => {
       }
     }
 
+    // Get user token for authenticated requests
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    const userToken = authHeader.substring(7);
+
+    // Get item details with MediaSources to extract audio tracks
+    const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
+    const axios = require('axios');
+    const config = await loadJellyfinConfig();
+    if (!config) {
+      return res.status(503).json({ message: 'Jellyfin server not configured' });
+    }
+
+    const serverUrl = config.serverUrl.replace(/\/+$/, '');
+    let audioTracks: Array<{ index: number; language: string; name: string; codec: string; mediaSourceId: string }> = [];
+    let defaultMediaSourceId: string | null = null;
+
+    try {
+      // Get user ID
+      const usersResponse = await axios.get(`${serverUrl}/Users`, {
+        headers: { 'X-Emby-Token': userToken },
+      });
+      const userId = usersResponse.data?.[0]?.Id || usersResponse.data?.Items?.[0]?.Id;
+      
+      if (userId) {
+        // Get item with MediaSources
+        const itemResponse = await axios.get(`${serverUrl}/Users/${userId}/Items/${id}`, {
+          headers: { 'X-Emby-Token': userToken },
+        });
+        
+        if (itemResponse.data?.MediaSources && itemResponse.data.MediaSources.length > 0) {
+          const mediaSource = itemResponse.data.MediaSources[0];
+          defaultMediaSourceId = mediaSource.Id;
+          
+          // Extract audio tracks from MediaSources
+          if (mediaSource.MediaStreams) {
+            const audioStreams = mediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
+            audioTracks = audioStreams.map((stream: any, index: number) => ({
+              index: stream.Index || index,
+              language: stream.Language || 'Unknown',
+              name: stream.DisplayTitle || `${stream.Language || 'Unknown'} (${stream.Codec || 'Unknown'})`,
+              codec: stream.Codec || 'Unknown',
+              mediaSourceId: mediaSource.Id,
+            }));
+          }
+
+          // If no audio tracks found but we have MediaSources, add a default track
+          if (audioTracks.length === 0 && mediaSource.Id) {
+            audioTracks.push({
+              index: 0,
+              language: 'Default',
+              name: 'Default Audio',
+              codec: 'Unknown',
+              mediaSourceId: mediaSource.Id,
+            });
+          }
+        }
+      }
+    } catch (error: any) {
+      console.warn('[getStreamUrl] Failed to get audio tracks:', error.message);
+      // Continue without audio tracks - stream will still work
+    }
+
     // Return relative proxied stream URL (no protocol/host for proxy/CDN compatibility)
     // This avoids CORS issues and keeps API keys secure
     const proxiedUrl = `/api/media/stream/${id}/master.m3u8`;
@@ -308,6 +373,8 @@ export const getStreamUrl = async (req: Request, res: Response) => {
     res.json({
       streamUrl: proxiedUrl,
       type: 'hls',
+      audioTracks: audioTracks,
+      defaultMediaSourceId: defaultMediaSourceId,
     });
   } catch (error) {
     console.error('Get stream URL error:', error);
@@ -433,6 +500,10 @@ export const proxyStream = async (req: Request, res: Response) => {
     }
 
     // Get media source ID from item details (required for HLS streaming in newer Jellyfin versions)
+    // Check if audio track is specified in query params
+    const audioTrackIndex = req.query.audioTrack ? parseInt(req.query.audioTrack as string) : null;
+    const requestedMediaSourceId = req.query.mediaSourceId as string | undefined;
+    
     let mediaSourceId: string | null = null;
     try {
       // Use userId endpoint to get item with user context
@@ -447,12 +518,30 @@ export const proxyStream = async (req: Request, res: Response) => {
         });
         
         if (itemResponse.data && itemResponse.data.MediaSources && itemResponse.data.MediaSources.length > 0) {
-          mediaSourceId = itemResponse.data.MediaSources[0].Id;
-          console.log('[proxyStream] Got media source ID:', mediaSourceId);
+          // If mediaSourceId is provided in query, use it; otherwise use first MediaSource
+          if (requestedMediaSourceId) {
+            const foundSource = itemResponse.data.MediaSources.find((ms: any) => ms.Id === requestedMediaSourceId);
+            if (foundSource) {
+              mediaSourceId = foundSource.Id;
+              console.log('[proxyStream] Using requested media source ID:', mediaSourceId);
+            } else {
+              mediaSourceId = itemResponse.data.MediaSources[0].Id;
+              console.log('[proxyStream] Requested media source not found, using first:', mediaSourceId);
+            }
+          } else {
+            mediaSourceId = itemResponse.data.MediaSources[0].Id;
+            console.log('[proxyStream] Got media source ID:', mediaSourceId);
+          }
         }
       }
     } catch (itemError: any) {
       console.warn('[proxyStream] Failed to get media source ID, will try without it:', itemError.message);
+    }
+    
+    // If mediaSourceId was provided in query but not found, use it anyway
+    if (requestedMediaSourceId && !mediaSourceId) {
+      mediaSourceId = requestedMediaSourceId;
+      console.log('[proxyStream] Using media source ID from query:', mediaSourceId);
     }
 
     // Construct the Jellyfin URL with user token
