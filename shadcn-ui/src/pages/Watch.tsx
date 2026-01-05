@@ -402,6 +402,15 @@ export default function Watch() {
         enableWorker: true,
         lowLatencyMode: false,
         debug: false,
+        // Increase timeouts for transcoded streams (they take longer to start)
+        manifestLoadingTimeOut: 20000, // 20 seconds for manifest
+        manifestLoadingMaxRetry: 3,
+        levelLoadingTimeOut: 20000, // 20 seconds for level/playlist
+        levelLoadingMaxRetry: 3,
+        fragLoadingTimeOut: 20000, // 20 seconds for fragments
+        fragLoadingMaxRetry: 3,
+        // Allow more time for codec initialization (transcoded streams need this)
+        startFragPrefetch: true,
       });
 
       const resolvedUrl = resolveMediaUrl(streamUrl);
