@@ -511,13 +511,17 @@ export default function Watch() {
     if (hasResumedRef.current || !videoRef.current) return;
     
     try {
-      // Try to get progress from backend first
+      // Try to get progress from backend first (only if user is authenticated)
       let savedProgress = 0;
       try {
         const response = await api.get(`/watch-history/progress/${mediaId}`);
         savedProgress = response.data.progress || 0;
       } catch (error: any) {
-        // Fallback to localStorage
+        // Silently fallback to localStorage if backend fails (401/400/404 are expected if not logged in)
+        // Only log if it's an unexpected error
+        if (error.response?.status && error.response.status !== 401 && error.response.status !== 400 && error.response.status !== 404) {
+          console.warn('[Watch] Failed to get progress from backend:', error.response?.status);
+        }
         savedProgress = getLastPosition(mediaId);
       }
       
