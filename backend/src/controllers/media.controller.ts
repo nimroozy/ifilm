@@ -614,6 +614,9 @@ export const proxyStream = async (req: Request, res: Response) => {
       fromReqQuery: { audioTrack: req.query.audioTrack, mediaSourceId: req.query.mediaSourceId },
       parsed: { audioTrackIndex, requestedMediaSourceId },
       url: req.url,
+      originalUrl: req.originalUrl,
+      path: req.path,
+      fullUrl: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
     });
     
     let mediaSourceId: string | null = null;
@@ -746,18 +749,56 @@ export const proxyStream = async (req: Request, res: Response) => {
     } else {
       // Master playlist
       // For Jellyfin HLS with audio track selection, we need to use the /hls endpoint
-      // Jellyfin's HLS endpoint: /Videos/{id}/hls/{playlistId}/stream.m3u8
-      // When AudioStreamIndex is specified, we need to generate a new HLS playlist
+      // Jellyfin's master.m3u8 doesn't support AudioStreamIndex directly
+      // Instead, we need to use POST /Videos/{id}/hls to create a playlist with the audio track
+      // Then use GET /Videos/{id}/hls/{playlistId}/stream.m3u8 to get the playlist
       if (audioStreamIndex !== null && mediaSourceId) {
-        // Use Jellyfin's /hls endpoint to generate playlist with specific audio track
-        // First, we need to get/create an HLS playlist with the audio track
-        // Jellyfin's API: POST /Videos/{id}/hls with body containing AudioStreamIndex
-        // But for GET requests, we can use: /Videos/{id}/hls/{playlistId}/stream.m3u8?AudioStreamIndex=X
-        // However, we need a playlistId first. Let's try a different approach:
-        // Use the master.m3u8 endpoint but with AudioStreamIndex - Jellyfin should filter the variants
-        targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
-        console.log('[proxyStream] Requesting master.m3u8 with AudioStreamIndex:', audioStreamIndex);
-        console.log('[proxyStream] Full URL:', targetUrl);
+        try {
+          // First, create an HLS playlist with the audio track using POST
+          const hlsCreateUrl = `${serverUrl}/Videos/${id}/hls`;
+          const hlsCreateBody = {
+            MediaSourceId: mediaSourceId,
+            AudioStreamIndex: audioStreamIndex,
+            SubtitleStreamIndex: null,
+            VideoStreamIndex: null,
+          };
+          
+          console.log('[proxyStream] Creating HLS playlist with audio track:', {
+            url: hlsCreateUrl,
+            body: hlsCreateBody,
+          });
+          
+          const hlsCreateResponse = await axios.post(hlsCreateUrl, hlsCreateBody, {
+            headers: {
+              'X-Emby-Token': userToken,
+              'Content-Type': 'application/json',
+            },
+            timeout: 10000,
+          });
+          
+          // Extract playlistId from response
+          const playlistId = hlsCreateResponse.data?.PlaylistId || hlsCreateResponse.data?.Id;
+          if (playlistId) {
+            // Use the generated playlist
+            targetUrl = `${serverUrl}/Videos/${id}/hls/${playlistId}/stream.m3u8?${urlParams.toString()}`;
+            console.log('[proxyStream] ✅ Created HLS playlist with audio track:', {
+              playlistId,
+              audioStreamIndex,
+              targetUrl,
+            });
+          } else {
+            console.warn('[proxyStream] ⚠️ No playlistId in HLS create response, falling back to master.m3u8');
+            targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
+          }
+        } catch (hlsError: any) {
+          console.error('[proxyStream] ❌ Failed to create HLS playlist with audio track:', {
+            error: hlsError.message,
+            status: hlsError.response?.status,
+            data: hlsError.response?.data,
+          });
+          // Fallback to master.m3u8
+          targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
+        }
       } else {
         targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
       }
