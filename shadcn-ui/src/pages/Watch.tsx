@@ -4,7 +4,7 @@ import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2
 import { api } from '@/services/api';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
-import { resolveMediaUrl } from '@/utils/urlSanitizer';
+import { resolveMediaUrl, getPlaceholderImage } from '@/utils/urlSanitizer';
 
 interface MediaDetails {
   id: string;
