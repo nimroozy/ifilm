@@ -176,27 +176,29 @@ export default function Watch() {
       setAudioTracks(tracks);
       setCurrentMediaSourceId(mediaSourceId || defaultMediaSourceId);
       
-      // Jellyfin's HLS doesn't expose multiple audio tracks in the manifest
-      // So we need to reload the stream with the selected audio track using Jellyfin's /hls endpoint
-      // The backend will create an HLS playlist with the selected audio track
+      // Jellyfin requires AudioStreamIndex in the master.m3u8 URL to use the correct audio track
+      // Audio track switching CANNOT be done live - the player must reload the stream
+      // This is how Jellyfin Web, Emby, and official clients work
       let finalStreamUrl = streamUrlValue;
       
-      // If audio track is specified, add it to the URL so backend creates HLS playlist with that track
+      // If audio track is specified, add it to the URL so backend includes AudioStreamIndex in master.m3u8
       if (audioTrackIndex !== undefined && audioTrackIndex !== null && tracks.length > 0) {
         const selectedTrack = tracks[audioTrackIndex];
         if (selectedTrack) {
           const url = new URL(streamUrlValue, window.location.origin);
           // Use the track's 'index' property (Jellyfin MediaStream Index)
+          // This will be converted to AudioStreamIndex by the backend
           url.searchParams.set('audioTrack', selectedTrack.index.toString());
           if (selectedTrack.mediaSourceId) {
             url.searchParams.set('mediaSourceId', selectedTrack.mediaSourceId);
           }
           finalStreamUrl = url.pathname + url.search;
           setSelectedAudioTrack(audioTrackIndex);
-          console.log('[Watch] Loading stream with audio track:', {
+          console.log('[Watch] Loading stream with audio track (will reload):', {
             arrayIndex: audioTrackIndex,
             jellyfinIndex: selectedTrack.index,
             track: selectedTrack.name,
+            streamUrl: finalStreamUrl,
           });
         }
       } else if (tracks.length > 0) {

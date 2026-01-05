@@ -913,19 +913,21 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
     } else {
       // Master playlist
-      // Jellyfin's master.m3u8 doesn't expose multiple audio tracks in HLS format
-      // The AudioStreamIndex parameter on master.m3u8 doesn't work - we need to use it on the variant playlist
-      // So we request master.m3u8 normally, then rewrite the variant playlist URL to include AudioStreamIndex
-      // The segments will then use AudioStreamIndex from the variant playlist
+      // CRITICAL: AudioStreamIndex MUST be in the master.m3u8 URL for Jellyfin to use the correct audio track
+      // Jellyfin treats each audio track as a different stream - the player must reload with AudioStreamIndex
       if (audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
-        // Add AudioStreamIndex to urlParams for master.m3u8
-        // Even though it doesn't directly affect master.m3u8, it will be preserved in rewritten URLs
-        const audioIndexStr = String(audioStreamIndex);
-        urlParams.append('AudioStreamIndex', audioIndexStr);
-        console.log('[proxyStream] Requesting master playlist with AudioStreamIndex (will be applied to variant):', audioStreamIndex);
+        urlParams.append('AudioStreamIndex', String(audioStreamIndex));
+        // Also add VideoStreamIndex=0 and SubtitleStreamIndex=-1 for proper stream selection
+        urlParams.append('VideoStreamIndex', '0');
+        urlParams.append('SubtitleStreamIndex', '-1');
+        console.log('[proxyStream] Requesting master playlist with AudioStreamIndex:', {
+          audioStreamIndex,
+          targetUrl: `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`,
+        });
+      } else {
+        console.log('[proxyStream] Requesting master playlist (default audio track)');
       }
       targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
-      console.log('[proxyStream] Requesting master playlist:', targetUrl);
     }
 
     console.log('[proxyStream] Proxying request to Jellyfin:', targetUrl);
