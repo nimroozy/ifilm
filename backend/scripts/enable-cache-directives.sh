@@ -30,6 +30,11 @@ sed -i '/location ^~ \/api\/media\/stream\//,/^[[:space:]]*}/ {
         /proxy_request_buffering off;/a\
         proxy_buffering on;
     }
+    # Ensure proxy_ignore_headers is set (ignore cache-preventing headers)
+    /proxy_ignore_headers/! {
+        /proxy_hide_header "Cache-Control";/a\
+        proxy_ignore_headers "Cache-Control" "Set-Cookie" "Vary";
+    }
 }' "$TMP_CONFIG"
 
 # Enable cache directives for images location
