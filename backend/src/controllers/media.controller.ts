@@ -326,38 +326,34 @@ export const proxyStream = async (req: Request, res: Response) => {
     // So /api/media/stream/id/master.m3u8 becomes /stream/id/master.m3u8 in req.path
     // But req.url contains the full path, so we can use either
     
-    // Try req.path first (relative to mount point)
-    let pathMatch = req.path.match(/\/stream\/([^\/]+)(?:\/(.+))?$/);
+    // Extract id and filePath from the matched route
+    // The regex route /^\/stream\/(.+)$/ captures everything after /stream/
+    // req.params[0] contains the matched group from the regex
+    // For /stream/id/master.m3u8, req.params[0] = "id/master.m3u8"
+    // For /stream/id/hls1/main/0.ts, req.params[0] = "id/hls1/main/0.ts"
     
-    // If that doesn't work, try req.url (full path)
-    if (!pathMatch) {
-      pathMatch = req.url.match(/\/stream\/([^\/]+)(?:\/(.+))?$/);
-    }
+    const fullPath = (req.params as any)[0] || req.path.replace(/^\/stream\//, '') || req.url.replace(/^.*\/stream\//, '');
     
-    // If still no match, try req.originalUrl (original full path)
-    if (!pathMatch) {
-      pathMatch = req.originalUrl.match(/\/stream\/([^\/]+)(?:\/(.+))?$/);
-    }
-    
-    if (!pathMatch) {
-      console.error('[proxyStream] Path match failed:', {
+    if (!fullPath) {
+      console.error('[proxyStream] No path found:', {
         path: req.path,
         url: req.url,
         originalUrl: req.originalUrl,
-        baseUrl: req.baseUrl,
+        params: req.params,
       });
       return res.status(400).json({ 
         message: 'Invalid stream path', 
         path: req.path,
         url: req.url,
-        originalUrl: req.originalUrl,
       });
     }
     
-    const id = pathMatch[1];
-    const filePath = pathMatch[2] || '';
+    // Split the path to get id and filePath
+    const pathParts = fullPath.split('/');
+    const id = pathParts[0];
+    const filePath = pathParts.slice(1).join('/') || '';
     
-    console.log('[proxyStream] Matched:', { id, filePath, path: req.path, url: req.url });
+    console.log('[proxyStream] Parsed:', { id, filePath, fullPath, path: req.path, url: req.url });
     
     if (!jellyfinService.isInitialized()) {
       const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');

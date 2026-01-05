@@ -23,6 +23,7 @@ router.get('/movies/:id/stream', authMiddleware, getStreamUrl);
 // Note: No auth middleware because HLS.js requests don't include auth headers
 // Security is maintained by authenticating with Jellyfin on the backend
 // Use regex to match both /stream/:id and /stream/:id/* patterns
-router.get(/^\/stream\/([^\/]+)(?:\/(.+))?$/, proxyStream);
+// The regex matches paths like /stream/id or /stream/id/master.m3u8 or /stream/id/hls1/main/0.ts
+router.get(/^\/stream\/(.+)$/, proxyStream);
 
 export default router;
