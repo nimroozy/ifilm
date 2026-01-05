@@ -34,8 +34,13 @@ app.use('/api/watch-history', watchHistoryRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/user', userRoutes);
 
-// Health check
+// Health check endpoints
 app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Also provide /api/health for frontend compatibility
+app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
