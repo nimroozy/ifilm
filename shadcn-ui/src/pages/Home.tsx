@@ -154,14 +154,22 @@ export default function Home() {
     }
   };
 
-  const handlePlayClick = (movieId: string) => {
+  const handlePlayClick = (item: ContinueWatchingItem) => {
     if (!isAuthenticated) {
-      // Store the movie ID to play after login
-      localStorage.setItem('redirectAfterLogin', `/watch/${movieId}`);
+      // Store the media ID to play after login
+      const redirectPath = item.type === 'episode' && (item as any).seriesId
+        ? `/watch-series/${(item as any).seriesId}?episode=${item.id}`
+        : `/watch/${item.id}`;
+      localStorage.setItem('redirectAfterLogin', redirectPath);
       navigate('/login');
-      toast.info('Please login to watch this movie');
+      toast.info('Please login to watch this content');
     } else {
-      navigate(`/watch/${movieId}`);
+      // For episodes, navigate to series page with episode ID
+      if (item.type === 'episode' && (item as any).seriesId) {
+        navigate(`/watch-series/${(item as any).seriesId}?episode=${item.id}`);
+      } else {
+        navigate(`/watch/${item.id}`);
+      }
     }
   };
 

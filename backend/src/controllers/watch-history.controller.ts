@@ -15,9 +15,67 @@ export const getHistory = async (req: Request, res: Response) => {
 
     const history = await getWatchHistory(userId, limit, offset);
 
+    // Enrich history items with media details from Jellyfin
+    const { default: jellyfinService } = await import('../services/jellyfin.service');
+    const enrichedItems = await Promise.all(
+      history.map(async (item) => {
+        try {
+          // For episodes, we need to get the parent series ID
+          if (item.mediaType === 'episode') {
+            const episode = await jellyfinService.getItemDetails(item.mediaId);
+            if (episode && episode.SeriesId) {
+              // Return episode info with parent series ID
+              return {
+                ...item,
+                id: item.mediaId, // Episode ID
+                seriesId: episode.SeriesId, // Parent series ID for navigation
+                title: episode.Name || item.mediaTitle || 'Unknown Episode',
+                posterUrl: jellyfinService.getImageUrl(episode.SeriesId || episode.Id, 'Primary'),
+                backdropUrl: episode.BackdropImageTags && episode.BackdropImageTags.length > 0
+                  ? jellyfinService.getImageUrl(episode.SeriesId || episode.Id, 'Backdrop')
+                  : jellyfinService.getImageUrl(episode.SeriesId || episode.Id, 'Primary'),
+                year: episode.ProductionYear || 0,
+                rating: episode.CommunityRating || 0,
+                duration: episode.RunTimeTicks ? Math.floor(episode.RunTimeTicks / 10000000 / 60) : item.duration,
+                genres: episode.Genres || [],
+                type: 'episode',
+              };
+            }
+          } else {
+            // For movies, get movie details
+            const movie = await jellyfinService.getItemDetails(item.mediaId);
+            if (movie) {
+              return {
+                ...item,
+                id: item.mediaId,
+                title: movie.Name || item.mediaTitle || 'Unknown Movie',
+                posterUrl: jellyfinService.getImageUrl(movie.Id, 'Primary'),
+                backdropUrl: movie.BackdropImageTags && movie.BackdropImageTags.length > 0
+                  ? jellyfinService.getImageUrl(movie.Id, 'Backdrop')
+                  : jellyfinService.getImageUrl(movie.Id, 'Primary'),
+                year: movie.ProductionYear || 0,
+                rating: movie.CommunityRating || 0,
+                duration: movie.RunTimeTicks ? Math.floor(movie.RunTimeTicks / 10000000 / 60) : item.duration,
+                genres: movie.Genres || [],
+                type: 'movie',
+              };
+            }
+          }
+        } catch (err: any) {
+          // If item doesn't exist in Jellyfin anymore, skip it
+          console.warn(`[getHistory] Item ${item.mediaId} not found in Jellyfin, skipping:`, err.message);
+          return null;
+        }
+        return null;
+      })
+    );
+
+    // Filter out null items (items that don't exist in Jellyfin)
+    const validItems = enrichedItems.filter(item => item !== null);
+
     res.json({
-      items: history,
-      total: history.length,
+      items: validItems,
+      total: validItems.length,
       limit,
       offset,
     });
@@ -88,9 +146,83 @@ export const getContinueWatchingItems = async (req: Request, res: Response) => {
     const userId = (req as any).user.userId;
     const items = await getContinueWatching(userId);
 
+    // Enrich items with media details from Jellyfin
+    const { default: jellyfinService } = await import('../services/jellyfin.service');
+    
+    // Check if Jellyfin is initialized
+    if (!jellyfinService.isInitialized()) {
+      const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
+      const config = await loadJellyfinConfig();
+      if (config) {
+        jellyfinService.initialize(config.serverUrl, config.apiKey);
+      } else {
+        // If Jellyfin not configured, return empty array
+        return res.json({
+          items: [],
+          total: 0,
+        });
+      }
+    }
+
+    const enrichedItems = await Promise.all(
+      items.map(async (item) => {
+        try {
+          // For episodes, we need to get the parent series ID
+          if (item.mediaType === 'episode') {
+            const episode = await jellyfinService.getItemDetails(item.mediaId);
+            if (episode && episode.SeriesId) {
+              // Return episode info with parent series ID
+              return {
+                ...item,
+                id: item.mediaId, // Episode ID
+                seriesId: episode.SeriesId, // Parent series ID for navigation
+                title: episode.Name || item.mediaTitle || 'Unknown Episode',
+                posterUrl: jellyfinService.getImageUrl(episode.SeriesId || episode.Id, 'Primary'),
+                backdropUrl: episode.BackdropImageTags && episode.BackdropImageTags.length > 0
+                  ? jellyfinService.getImageUrl(episode.SeriesId || episode.Id, 'Backdrop')
+                  : jellyfinService.getImageUrl(episode.SeriesId || episode.Id, 'Primary'),
+                year: episode.ProductionYear || 0,
+                rating: episode.CommunityRating || 0,
+                duration: episode.RunTimeTicks ? Math.floor(episode.RunTimeTicks / 10000000 / 60) : item.duration,
+                genres: episode.Genres || [],
+                type: 'episode',
+              };
+            }
+          } else {
+            // For movies, get movie details
+            const movie = await jellyfinService.getItemDetails(item.mediaId);
+            if (movie) {
+              return {
+                ...item,
+                id: item.mediaId,
+                title: movie.Name || item.mediaTitle || 'Unknown Movie',
+                posterUrl: jellyfinService.getImageUrl(movie.Id, 'Primary'),
+                backdropUrl: movie.BackdropImageTags && movie.BackdropImageTags.length > 0
+                  ? jellyfinService.getImageUrl(movie.Id, 'Backdrop')
+                  : jellyfinService.getImageUrl(movie.Id, 'Primary'),
+                year: movie.ProductionYear || 0,
+                rating: movie.CommunityRating || 0,
+                duration: movie.RunTimeTicks ? Math.floor(movie.RunTimeTicks / 10000000 / 60) : item.duration,
+                genres: movie.Genres || [],
+                type: 'movie',
+              };
+            }
+          }
+        } catch (err: any) {
+          // If item doesn't exist in Jellyfin anymore, skip it
+          console.warn(`[getContinueWatchingItems] Item ${item.mediaId} not found in Jellyfin, skipping:`, err.message);
+          return null;
+        }
+        return null;
+      })
+    );
+
+    // Filter out null items (items that don't exist in Jellyfin)
+    const validItems = enrichedItems.filter(item => item !== null);
+
     res.json({
-      items,
-      total: items.length,
+      items: validItems,
+      total: validItems.length,
     });
   } catch (error) {
     console.error('Get continue watching error:', error);
