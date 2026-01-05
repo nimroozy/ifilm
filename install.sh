@@ -84,18 +84,27 @@ echo ""
 echo "8️⃣.5️⃣ Creating default admin user..."
 cd /opt/ifilm/backend
 
-# Set database environment variables for create-admin script
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_NAME=ifilm
-export DB_USER=ifilm
-export DB_PASSWORD=ifilm123
+# Create .env file if it doesn't exist
+if [ ! -f ".env" ]; then
+    cat > .env << 'ENVEOF'
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=ifilm
+DB_USER=ifilm
+DB_PASSWORD=ifilm123
+NODE_ENV=production
+PORT=5000
+ENVEOF
+fi
 
 if [ -f "scripts/create-admin.js" ]; then
-    # Check if admin user already exists
+    # Check if admin user already exists using postgres user (more reliable during install)
     ADMIN_EXISTS=$(sudo -u postgres psql -d ifilm -t -c "SELECT COUNT(*) FROM users WHERE email = 'admin@ifilm.af';" 2>/dev/null | tr -d ' ')
     if [ "$ADMIN_EXISTS" = "0" ] || [ -z "$ADMIN_EXISTS" ]; then
-        node scripts/create-admin.js admin@ifilm.af admin Haroon@00 2>/dev/null && echo "✅ Default admin user created" || echo "⚠️  Failed to create admin user (may already exist)"
+        # Try with ifilm user first, fallback to postgres
+        DB_USER=ifilm DB_PASSWORD=ifilm123 node scripts/create-admin.js admin@ifilm.af admin Haroon@00 2>/dev/null || \
+        DB_USER=postgres DB_PASSWORD= node scripts/create-admin.js admin@ifilm.af admin Haroon@00 2>/dev/null && \
+        echo "✅ Default admin user created" || echo "⚠️  Failed to create admin user (may already exist or check database permissions)"
     else
         echo "✅ Default admin user already exists"
     fi
