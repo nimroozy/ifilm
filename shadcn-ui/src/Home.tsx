@@ -38,7 +38,7 @@ export default function Home() {
       // Load continue watching only if authenticated
       if (isAuthenticated) {
         try {
-          const historyResponse = await api.get('/user/watch-history?limit=6');
+          const historyResponse = await api.get('/watch-history?limit=6');
           setContinueWatching(historyResponse.data.items || []);
         } catch (error) {
           console.log('Could not load watch history (user not authenticated)');

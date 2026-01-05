@@ -100,7 +100,7 @@ export default function Home() {
           
           // Load continue watching
           try {
-            const historyResponse = await api.get('/user/watch-history?limit=6');
+            const historyResponse = await api.get('/watch-history?limit=6');
             setContinueWatching(historyResponse.data.items || []);
             console.log('[Home] Continue watching loaded:', historyResponse.data.items?.length || 0);
           } catch (historyError) {
