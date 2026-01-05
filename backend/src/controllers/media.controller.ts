@@ -834,7 +834,7 @@ export const proxyStream = async (req: Request, res: Response) => {
         // If this segment is from an HLS playlist and we have the playlistId, use the HLS playlist path
         // HLS playlist segments already have correct audio, so don't add AudioStreamIndex
         if (isFromHlsPlaylist && hlsPlaylistId) {
-          targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${filePath}?${segmentParams.toString()}`;
+          targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${normalizedFilePath}?${segmentParams.toString()}`;
           console.log('[proxyStream] ✅ Requesting segment from HLS playlist:', {
             playlistId: hlsPlaylistId,
             filePath,
