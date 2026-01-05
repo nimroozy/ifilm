@@ -240,20 +240,30 @@ export default function Watch() {
         const selectedTrack = tracks[audioTrackIndex];
         if (selectedTrack) {
           const url = new URL(streamUrlValue, window.location.origin);
-          // Use the track's 'index' property (Jellyfin MediaStream Index)
-          // This will be converted to AudioStreamIndex by the backend
-          url.searchParams.set('audioTrack', selectedTrack.index.toString());
+          
+          // CRITICAL: Use the track's 'index' property (Jellyfin MediaStream Index)
+          // This is NOT the array index - it's the actual Jellyfin MediaStream Index from the API
+          // Example: If Jellyfin has audio streams with Index 1 and 2, we send 1 or 2, not 0 or 1
+          const jellyfinIndex = selectedTrack.index;
+          
+          console.log('[Watch] ========== AUDIO TRACK INDEX VERIFICATION ==========');
+          console.log('[Watch] UI Array Index (audioTrackIndex):', audioTrackIndex);
+          console.log('[Watch] Jellyfin MediaStream Index (selectedTrack.index):', jellyfinIndex);
+          console.log('[Watch] Track name:', selectedTrack.name);
+          console.log('[Watch] Track language:', selectedTrack.language);
+          console.log('[Watch] MediaSourceId:', selectedTrack.mediaSourceId);
+          console.log('[Watch] ✅ Sending Jellyfin Index to backend:', jellyfinIndex);
+          console.log('[Watch] ====================================================');
+          
+          url.searchParams.set('audioTrack', jellyfinIndex.toString());
           if (selectedTrack.mediaSourceId) {
             url.searchParams.set('mediaSourceId', selectedTrack.mediaSourceId);
           }
           finalStreamUrl = url.pathname + url.search;
           setSelectedAudioTrack(audioTrackIndex);
-          console.log('[Watch] Loading stream with audio track (will reload):', {
-            arrayIndex: audioTrackIndex,
-            jellyfinIndex: selectedTrack.index,
-            track: selectedTrack.name,
-            streamUrl: finalStreamUrl,
-          });
+          console.log('[Watch] Final stream URL with audioTrack param:', finalStreamUrl);
+        } else {
+          console.error('[Watch] ❌ Selected track not found at array index:', audioTrackIndex);
         }
       } else if (tracks.length > 0) {
         // Select first track by default

@@ -368,21 +368,37 @@ export const getStreamUrl = async (req: Request, res: Response) => {
             const audioStreams = mediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
             console.log(`[getStreamUrl] Found ${audioStreams.length} audio streams in MediaSource ${mediaSource.Id}`);
             
-            audioStreams.forEach((stream: any, index: number) => {
+            audioStreams.forEach((stream: any, arrayIndex: number) => {
+              // CRITICAL: stream.Index is the Jellyfin MediaStream Index (e.g., 1, 2, 3)
+              // This is what Jellyfin expects in AudioStreamIndex parameter
+              const jellyfinIndex = stream.Index !== undefined ? stream.Index : null;
+              
+              console.log('[getStreamUrl] Audio stream found:', {
+                arrayIndex: arrayIndex,
+                jellyfinIndex: jellyfinIndex,
+                language: stream.Language || stream.LanguageTag,
+                codec: stream.Codec,
+                name: stream.DisplayTitle || stream.Title,
+                mediaSourceId: mediaSource.Id,
+              });
+              
               // Check if this track already exists (avoid duplicates)
               const existingTrack = audioTracks.find(
                 (track) => track.language === (stream.Language || stream.LanguageTag || 'Unknown') && 
                            track.codec === (stream.Codec || 'Unknown')
               );
               
-              if (!existingTrack) {
+              if (!existingTrack && jellyfinIndex !== null) {
                 audioTracks.push({
-                  index: stream.Index !== undefined ? stream.Index : audioTracks.length,
+                  index: jellyfinIndex, // CRITICAL: This MUST be stream.Index (Jellyfin MediaStream Index)
                   language: stream.Language || stream.LanguageTag || 'Unknown',
                   name: stream.DisplayTitle || stream.Title || `${stream.Language || stream.LanguageTag || 'Unknown'} (${stream.Codec || 'Unknown'})`,
                   codec: stream.Codec || 'Unknown',
                   mediaSourceId: mediaSource.Id,
                 });
+                console.log('[getStreamUrl] ✅ Added audio track with Jellyfin Index:', jellyfinIndex);
+              } else if (jellyfinIndex === null) {
+                console.warn('[getStreamUrl] ⚠️ Audio stream has no Index property!', stream);
               }
             });
           }
@@ -949,11 +965,18 @@ export const proxyStream = async (req: Request, res: Response) => {
       url: req.url,
     });
 
-    // Proxy the request to Jellyfin with user token
+    // Proxy the request to Jellyfin with user token and client headers
+    // Jellyfin Web uses these headers for proper client identification
     const response = await axios.get(targetUrl, {
       responseType: normalizedFilePath?.endsWith('.m3u8') ? 'text' : 'stream',
       headers: {
         'X-Emby-Token': userToken,
+        'X-Emby-Client': 'iFilm',
+        'X-Emby-Device-Name': 'Web Browser',
+        'X-Emby-Device-Id': 'ifilm-web',
+        'X-Emby-Client-Version': '1.0.0',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
       },
       timeout: 30000, // 30 second timeout for streaming
     });
