@@ -176,21 +176,32 @@ export default function Watch() {
       setAudioTracks(tracks);
       setCurrentMediaSourceId(mediaSourceId || defaultMediaSourceId);
       
-      // For seamless audio track switching, always load master playlist WITHOUT audioTrack parameter
-      // This allows HLS.js to detect all audio tracks from the manifest
-      // We'll switch tracks using HLS.js's audioTrack property instead of reloading
+      // Jellyfin's HLS doesn't expose multiple audio tracks in the manifest
+      // So we need to reload the stream with the selected audio track using Jellyfin's /hls endpoint
+      // The backend will create an HLS playlist with the selected audio track
       let finalStreamUrl = streamUrlValue;
       
-      // Always load without audioTrack parameter to get all tracks in manifest
-      // HLS.js will handle track switching seamlessly
-      if (tracks.length > 0) {
-        // Set selected track index if provided, otherwise default to first
-        if (audioTrackIndex !== undefined && audioTrackIndex !== null) {
+      // If audio track is specified, add it to the URL so backend creates HLS playlist with that track
+      if (audioTrackIndex !== undefined && audioTrackIndex !== null && tracks.length > 0) {
+        const selectedTrack = tracks[audioTrackIndex];
+        if (selectedTrack) {
+          const url = new URL(streamUrlValue, window.location.origin);
+          // Use the track's 'index' property (Jellyfin MediaStream Index)
+          url.searchParams.set('audioTrack', selectedTrack.index.toString());
+          if (selectedTrack.mediaSourceId) {
+            url.searchParams.set('mediaSourceId', selectedTrack.mediaSourceId);
+          }
+          finalStreamUrl = url.pathname + url.search;
           setSelectedAudioTrack(audioTrackIndex);
-        } else {
-          // Select first track by default
-          setSelectedAudioTrack(0);
+          console.log('[Watch] Loading stream with audio track:', {
+            arrayIndex: audioTrackIndex,
+            jellyfinIndex: selectedTrack.index,
+            track: selectedTrack.name,
+          });
         }
+      } else if (tracks.length > 0) {
+        // Select first track by default
+        setSelectedAudioTrack(0);
       }
       
       
