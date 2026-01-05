@@ -322,14 +322,42 @@ export const proxyStream = async (req: Request, res: Response) => {
     // The regex route /^\/stream\/([^\/]+)(?:\/(.+))?$/ captures:
     // - Group 1: the id
     // - Group 2: the file path (optional)
-    // Note: req.path includes the full path including route prefix (/api/media/stream/...)
-    // So we need to match from /stream/ onwards
-    const pathMatch = req.path.match(/\/stream\/([^\/]+)(?:\/(.+))?$/);
+    // Note: When mounted at /api/media, req.path is relative to the mount point
+    // So /api/media/stream/id/master.m3u8 becomes /stream/id/master.m3u8 in req.path
+    // But req.url contains the full path, so we can use either
+    
+    // Try req.path first (relative to mount point)
+    let pathMatch = req.path.match(/\/stream\/([^\/]+)(?:\/(.+))?$/);
+    
+    // If that doesn't work, try req.url (full path)
     if (!pathMatch) {
-      return res.status(400).json({ message: 'Invalid stream path', path: req.path });
+      pathMatch = req.url.match(/\/stream\/([^\/]+)(?:\/(.+))?$/);
     }
+    
+    // If still no match, try req.originalUrl (original full path)
+    if (!pathMatch) {
+      pathMatch = req.originalUrl.match(/\/stream\/([^\/]+)(?:\/(.+))?$/);
+    }
+    
+    if (!pathMatch) {
+      console.error('[proxyStream] Path match failed:', {
+        path: req.path,
+        url: req.url,
+        originalUrl: req.originalUrl,
+        baseUrl: req.baseUrl,
+      });
+      return res.status(400).json({ 
+        message: 'Invalid stream path', 
+        path: req.path,
+        url: req.url,
+        originalUrl: req.originalUrl,
+      });
+    }
+    
     const id = pathMatch[1];
     const filePath = pathMatch[2] || '';
+    
+    console.log('[proxyStream] Matched:', { id, filePath, path: req.path, url: req.url });
     
     if (!jellyfinService.isInitialized()) {
       const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
