@@ -1155,6 +1155,8 @@ export const proxyStream = async (req: Request, res: Response) => {
             if (urlPath === 'main.m3u8' && audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
               const variantParams = new URLSearchParams(existingQueryString);
               variantParams.set('AudioStreamIndex', String(audioStreamIndex));
+              // Force transcoding for rewritten variant playlists too
+              variantParams.set('AudioCodec', 'aac');
               if (mediaSourceId) {
                 variantParams.set('MediaSourceId', mediaSourceId);
               }
