@@ -681,7 +681,18 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
     } else {
       // Master playlist
-      targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
+      // For Jellyfin HLS, AudioStreamIndex might need to be passed differently
+      // Try using the HLS endpoint with AudioStreamIndex if specified
+      if (audioStreamIndex !== null && mediaSourceId) {
+        // Request HLS stream with specific audio track
+        // Jellyfin's HLS endpoint: /Videos/{id}/hls/{playlistId}/stream.m3u8
+        // But we need to get the playlistId first, or use a different approach
+        // For now, try adding AudioStreamIndex to master.m3u8 request
+        targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
+        console.log('[proxyStream] Requesting master.m3u8 with AudioStreamIndex:', audioStreamIndex);
+      } else {
+        targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
+      }
     }
 
     console.log('[proxyStream] Proxying request to Jellyfin:', targetUrl);
@@ -733,6 +744,12 @@ export const proxyStream = async (req: Request, res: Response) => {
           chunks.push(chunk);
         }
         playlistContent = Buffer.concat(chunks).toString('utf-8');
+      }
+      
+      // Debug: Log playlist content when audio track is specified
+      if (audioStreamIndex !== null) {
+        console.log('[proxyStream] Playlist content (first 500 chars) with AudioStreamIndex:', audioStreamIndex);
+        console.log('[proxyStream]', playlistContent.substring(0, 500));
       }
 
       // Rewrite URLs in the playlist to RELATIVE paths only
