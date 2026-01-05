@@ -10,30 +10,34 @@ A modern, self-hosted media streaming platform built with React, Node.js, Expres
 - At least 2GB RAM
 - Docker and Docker Compose installed
 
-### One-Click Installation
+### One-Click Installation (Fresh Ubuntu Server)
 
-**Recommended Method (Clone First):**
+**For Fresh Ubuntu Server (Recommended):**
 
 ```bash
+# Clone and install
+git clone https://github.com/nimroozy/ifilm.git
+cd ifilm
+chmod +x install-ubuntu.sh
+sudo ./install-ubuntu.sh
+```
+
+**Alternative Installation Methods:**
+
+```bash
+# Method 1: Clone first (most reliable)
 git clone https://github.com/nimroozy/ifilm.git
 cd ifilm
 chmod +x install.sh
 sudo ./install.sh
+
+# Method 2: Direct download (if repository is public)
+wget https://raw.githubusercontent.com/nimroozy/ifilm/main/install-ubuntu.sh
+chmod +x install-ubuntu.sh
+sudo ./install-ubuntu.sh
 ```
 
-**Alternative (Direct Download):**
-
-```bash
-# If the repository is public, you can use:
-curl -fsSL https://raw.githubusercontent.com/nimroozy/ifilm/main/install.sh | bash
-
-# Or download manually:
-wget https://raw.githubusercontent.com/nimroozy/ifilm/main/install.sh
-chmod +x install.sh
-sudo ./install.sh
-```
-
-> **Note:** If you get a 404 error, the repository might be private. Use the clone method instead.
+> **Note:** `install-ubuntu.sh` is optimized for fresh Ubuntu installations and handles all prerequisites automatically.
 
 ## 📋 Manual Installation
 
