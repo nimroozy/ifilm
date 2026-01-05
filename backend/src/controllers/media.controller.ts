@@ -805,13 +805,11 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
     } else {
       // Master playlist
-      // For Jellyfin HLS with audio track selection, we need to use the /hls endpoint
-      // Jellyfin's master.m3u8 doesn't support AudioStreamIndex directly
-      // Instead, we need to use POST /Videos/{id}/hls to create a playlist with the audio track
-      // Then use GET /Videos/{id}/hls/{playlistId}/stream.m3u8 to get the playlist
+      // For Jellyfin HLS with audio track selection, try using /hls endpoint first
+      // If that fails, fall back to using AudioStreamIndex directly on master.m3u8
       if (audioStreamIndex !== null && mediaSourceId) {
         try {
-          // First, create an HLS playlist with the audio track using POST
+          // First, try creating an HLS playlist with the audio track using POST
           const hlsCreateUrl = `${serverUrl}/Videos/${id}/hls`;
           const hlsCreateBody = {
             MediaSourceId: mediaSourceId,
@@ -857,17 +855,19 @@ export const proxyStream = async (req: Request, res: Response) => {
               responseKeys: Object.keys(hlsCreateResponse.data || {}),
             });
           } else {
-            console.error('[proxyStream] ❌ No playlistId in HLS create response, falling back to master.m3u8');
-            console.error('[proxyStream] Full HLS create response:', JSON.stringify(hlsCreateResponse.data, null, 2));
+            console.warn('[proxyStream] ⚠️ No playlistId in HLS create response, using AudioStreamIndex on master.m3u8');
+            console.warn('[proxyStream] HLS create response data:', JSON.stringify(hlsCreateResponse.data, null, 2));
+            // Fallback: Use AudioStreamIndex directly on master.m3u8
             targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
           }
         } catch (hlsError: any) {
-          console.error('[proxyStream] ❌ Failed to create HLS playlist with audio track:', {
+          console.warn('[proxyStream] ⚠️ Failed to create HLS playlist, using AudioStreamIndex on master.m3u8:', {
             error: hlsError.message,
             status: hlsError.response?.status,
             data: hlsError.response?.data,
           });
-          // Fallback to master.m3u8
+          // Fallback: Use AudioStreamIndex directly on master.m3u8
+          // Jellyfin might support AudioStreamIndex on master.m3u8 in some versions
           targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
         }
       } else {
