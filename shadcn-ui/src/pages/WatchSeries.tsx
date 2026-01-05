@@ -999,13 +999,50 @@ export default function WatchSeries() {
                                   e.stopPropagation();
                                   setShowAudioMenu(false);
                                   
-                                  // Preserve playback state
+                                  // Jellyfin's HLS doesn't expose multiple audio tracks in the manifest
+                                  // So we need to reload the stream with the selected audio track
+                                  // Preserve playback state to make it feel seamless
                                   const wasPlaying = isPlaying;
                                   const currentTime = videoRef.current?.currentTime || 0;
                                   
-                                  // Switch audio track on existing HLS instance without reloading
-                                  // Try to map our backend audio track to HLS.js audio track by language/codec
-                                  if (hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 0) {
+                                  setSelectedAudioTrack(index);
+                                  console.log('[WatchSeries] Switching audio track (will reload stream):', {
+                                    arrayIndex: index,
+                                    jellyfinIndex: track.index,
+                                    track: track.name,
+                                  });
+                                  
+                                  // Reload stream with new audio track using Jellyfin's /hls endpoint
+                                  if (selectedEpisode) {
+                                    // Pause video during reload
+                                    if (videoRef.current && wasPlaying) {
+                                      videoRef.current.pause();
+                                    }
+                                    
+                                    await loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
+                                    
+                                    // Restore playback position and resume after a brief delay
+                                    if (videoRef.current) {
+                                      setTimeout(() => {
+                                        if (videoRef.current) {
+                                          videoRef.current.currentTime = currentTime;
+                                          if (wasPlaying) {
+                                            videoRef.current.play().catch((err: any) => {
+                                              console.error('[WatchSeries] Failed to resume playback:', err);
+                                            });
+                                          }
+                                        }
+                                      }, 500);
+                                    }
+                                    
+                                    toast.success(`Switched to ${track.name}`);
+                                  }
+                                  
+                                  // Skip the old HLS.js audio track switching code since Jellyfin doesn't support it
+                                  return;
+                                  
+                                  // Legacy code (not used for Jellyfin)
+                                  if (false && hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 0) {
                                     try {
                                       // Find matching HLS audio track by language and codec
                                       let hlsTrackIndex = -1;
