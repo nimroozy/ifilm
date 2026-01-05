@@ -118,7 +118,8 @@ sudo sed -i '/proxy_cache_path/d' "$TMP_CONFIG"
 if [ -n "${CACHE_CONFIGS[images]}" ]; then
     IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
     # Uncomment cache directives for images within the location block
-    sed -i '/location ~\* \^\/api\/media\/images\//,/^[[:space:]]*}/ {
+    # Match prefix location pattern (^~ /api/media/images/)
+    sed -i '/location ^~ \/api\/media\/images\//,/^[[:space:]]*}/ {
         s|^[[:space:]]*# proxy_cache images_cache;|        proxy_cache images_cache;|
         s|^[[:space:]]*# proxy_cache_valid 200|        proxy_cache_valid 200|
         s|^[[:space:]]*# proxy_cache_valid 404|        proxy_cache_valid 404|
@@ -127,7 +128,7 @@ if [ -n "${CACHE_CONFIGS[images]}" ]; then
         s|^[[:space:]]*# add_header X-Cache-Status|        add_header X-Cache-Status|
     }' "$TMP_CONFIG"
     # Replace the cache_valid lines with actual values from database
-    sed -i "/location ~\* \^\/api\/media\/images\//,/^[[:space:]]*}/ {
+    sed -i "/location ^~ \/api\/media\/images\//,/^[[:space:]]*}/ {
         s|proxy_cache_valid 200 30d|proxy_cache_valid 200 ${cache_valid_200}|
         s|proxy_cache_valid 404 1h|proxy_cache_valid 404 ${cache_valid_404}|
     }" "$TMP_CONFIG"
@@ -136,7 +137,8 @@ fi
 if [ -n "${CACHE_CONFIGS[videos]}" ]; then
     IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[videos]}"
     # Uncomment cache directives for videos within the location block
-    sed -i '/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
+    # Match prefix location pattern (^~ /api/media/stream/)
+    sed -i '/location ^~ \/api\/media\/stream\//,/^[[:space:]]*}/ {
         s|^[[:space:]]*# proxy_cache videos_cache;|        proxy_cache videos_cache;|
         s|^[[:space:]]*# proxy_cache_valid 200|        proxy_cache_valid 200|
         s|^[[:space:]]*# proxy_cache_valid 404|        proxy_cache_valid 404|
@@ -146,12 +148,12 @@ if [ -n "${CACHE_CONFIGS[videos]}" ]; then
         s|^[[:space:]]*# add_header X-Cache-Status|        add_header X-Cache-Status|
     }' "$TMP_CONFIG"
     # Replace the cache_valid lines with actual values from database
-    sed -i "/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
+    sed -i "/location ^~ \/api\/media\/stream\//,/^[[:space:]]*}/ {
         s|proxy_cache_valid 200 7d|proxy_cache_valid 200 ${cache_valid_200}|
         s|proxy_cache_valid 404 1h|proxy_cache_valid 404 ${cache_valid_404}|
     }" "$TMP_CONFIG"
     # Ensure buffering is enabled for caching (required for proxy_cache)
-    sed -i '/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
+    sed -i '/location ^~ \/api\/media\/stream\//,/^[[:space:]]*}/ {
         s|proxy_buffering off;|proxy_buffering on;|
     }' "$TMP_CONFIG"
 fi
