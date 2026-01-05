@@ -108,10 +108,16 @@ nginx -t
 # Configure sudoers for NGINX commands (for root user)
 echo ""
 echo "1️⃣1️⃣ Configuring sudoers..."
-SUDOERS_LINE="root ALL=(ALL) NOPASSWD: /usr/sbin/nginx, /bin/systemctl reload nginx, /bin/systemctl reload nginx.service"
+# Find the user running the script (usually root)
+CURRENT_USER=${SUDO_USER:-$USER}
+if [ "$CURRENT_USER" = "root" ] || [ -z "$CURRENT_USER" ]; then
+    CURRENT_USER="root"
+fi
+
+SUDOERS_LINE="$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/nginx, /bin/systemctl reload nginx, /bin/systemctl reload nginx.service, /opt/ifilm/backend/scripts/update-nginx-cache.sh"
 if ! grep -q "NOPASSWD.*nginx" /etc/sudoers 2>/dev/null; then
     echo "$SUDOERS_LINE" >> /etc/sudoers
-    echo "✅ Sudoers configured"
+    echo "✅ Sudoers configured for $CURRENT_USER"
 else
     echo "✅ Sudoers already configured"
 fi

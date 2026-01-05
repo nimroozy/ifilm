@@ -1107,6 +1107,15 @@ export const saveCacheConfigController = async (req: Request, res: Response) => 
       isEnabled !== undefined ? isEnabled : true
     );
 
+    // Update NGINX cache config automatically
+    try {
+      await execAsync('cd /opt/ifilm && sudo /opt/ifilm/backend/scripts/update-nginx-cache.sh 2>&1');
+      console.log('[saveCacheConfig] NGINX cache config updated successfully');
+    } catch (nginxError: any) {
+      console.warn('[saveCacheConfig] Failed to update NGINX cache config:', nginxError.message);
+      // Don't fail the request, just log the warning
+    }
+
     // Log admin action
     const adminId = (req as any).user?.userId;
     if (adminId) {
@@ -1148,6 +1157,15 @@ export const updateCacheConfigEnabledController = async (req: Request, res: Resp
       cacheType as 'images' | 'videos' | 'all',
       isEnabled
     );
+
+    // Update NGINX cache config automatically
+    try {
+      await execAsync('cd /opt/ifilm && sudo /opt/ifilm/backend/scripts/update-nginx-cache.sh 2>&1');
+      console.log('[updateCacheConfigEnabled] NGINX cache config updated successfully');
+    } catch (nginxError: any) {
+      console.warn('[updateCacheConfigEnabled] Failed to update NGINX cache config:', nginxError.message);
+      // Don't fail the request, just log the warning
+    }
 
     // Log admin action
     const adminId = (req as any).user?.userId;
