@@ -983,18 +983,8 @@ export const proxyStream = async (req: Request, res: Response) => {
         });
       }
       
-      // When using HLS playlist (hlsPlaylistId is set), segments already have correct audio track
-      // Don't add audioTrack query params to segments - they're already in the playlist
-      const shouldPreserveAudioTrack = !hlsPlaylistId && audioStreamIndex !== null;
-
-      // Rewrite URLs in the playlist to RELATIVE paths only
-      // Replace relative paths and Jellyfin URLs with our proxy URLs
-      // Preserve query parameters (runtimeTicks, actualSegmentLengthTicks) for segment URLs
-      // IMPORTANT: Also preserve audioTrack and mediaSourceId query params for variant playlists and segments
-      const audioTrackParam = audioStreamIndex !== null ? `audioTrack=${audioStreamIndex}` : '';
-      const mediaSourceParam = mediaSourceId ? `mediaSourceId=${mediaSourceId}` : '';
-      const preservedParams = [audioTrackParam, mediaSourceParam].filter(p => p).join('&');
-      
+      // ALWAYS include audioTrack and mediaSourceId in rewritten URLs as fallback
+      // Even if using HLS playlist, include these params so segments can use AudioStreamIndex if needed
       const rewrittenPlaylist = playlistContent
         .split('\n')
         .map((line: string) => {
@@ -1004,21 +994,19 @@ export const proxyStream = async (req: Request, res: Response) => {
           }
           
           // This is a URL line - rewrite it to relative path
-          // IMPORTANT: Preserve audioTrack and mediaSourceId query params for variant playlists and segments
+          // IMPORTANT: Always preserve audioTrack, mediaSourceId, and hlsPlaylistId query params
           let url = line.trim();
           const urlParts = url.split('?');
           const urlPath = urlParts[0];
           const existingQueryString = urlParts[1] || '';
           
-          // Build query params: merge existing params with audioTrack/mediaSourceId
-          // NOTE: When using HLS playlist (hlsPlaylistId), segments already have correct audio track
-          // Only add audioTrack param if NOT using HLS playlist
+          // Build query params: merge existing params with audioTrack/mediaSourceId/hlsPlaylistId
+          // ALWAYS include these params so segments can use them as fallback
           const queryParams = new URLSearchParams(existingQueryString);
-          if (shouldPreserveAudioTrack) {
-            queryParams.set('audioTrack', audioStreamIndex!.toString());
+          if (audioStreamIndex !== null) {
+            queryParams.set('audioTrack', audioStreamIndex.toString());
           }
-          if (mediaSourceId && !hlsPlaylistId) {
-            // Only add mediaSourceId if not using HLS playlist (it's already in the playlist path)
+          if (mediaSourceId) {
             queryParams.set('mediaSourceId', mediaSourceId);
           }
           // IMPORTANT: Include hlsPlaylistId in rewritten URLs so segment requests can use it
