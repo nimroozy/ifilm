@@ -214,18 +214,30 @@ export default function WatchSeries() {
       setAudioTracks(tracks);
       setCurrentMediaSourceId(mediaSourceId || defaultMediaSourceId);
       
-      // If audio track is specified, append it to the stream URL
+      // Jellyfin requires AudioStreamIndex in the master.m3u8 URL to use the correct audio track
+      // Audio track switching CANNOT be done live - the player must reload the stream
+      // This is how Jellyfin Web, Emby, and official clients work
       let finalStreamUrl = streamUrlValue;
+      
+      // If audio track is specified, add it to the URL so backend includes AudioStreamIndex in master.m3u8
       if (audioTrackIndex !== undefined && audioTrackIndex !== null && tracks.length > 0) {
         const selectedTrack = tracks[audioTrackIndex];
         if (selectedTrack) {
           const url = new URL(streamUrlValue, window.location.origin);
-          url.searchParams.set('audioTrack', audioTrackIndex.toString());
+          // Use the track's 'index' property (Jellyfin MediaStream Index)
+          // This will be converted to AudioStreamIndex by the backend
+          url.searchParams.set('audioTrack', selectedTrack.index.toString());
           if (selectedTrack.mediaSourceId) {
             url.searchParams.set('mediaSourceId', selectedTrack.mediaSourceId);
           }
           finalStreamUrl = url.pathname + url.search;
           setSelectedAudioTrack(audioTrackIndex);
+          console.log('[WatchSeries] Loading stream with audio track (will reload):', {
+            arrayIndex: audioTrackIndex,
+            jellyfinIndex: selectedTrack.index,
+            track: selectedTrack.name,
+            streamUrl: finalStreamUrl,
+          });
         }
       } else if (tracks.length > 0) {
         // Select first track by default
