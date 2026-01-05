@@ -558,8 +558,37 @@ export const proxyStream = async (req: Request, res: Response) => {
 
     // Get media source ID from item details (required for HLS streaming in newer Jellyfin versions)
     // Check if audio track is specified in query params
-    const audioTrackIndex = req.query.audioTrack ? parseInt(req.query.audioTrack as string) : null;
-    const requestedMediaSourceId = req.query.mediaSourceId as string | undefined;
+    // Note: For regex routes, req.query might not be populated, so parse from req.url
+    let audioTrackIndex: number | null = null;
+    let requestedMediaSourceId: string | undefined = undefined;
+    
+    // Try req.query first (works for normal routes)
+    if (req.query.audioTrack) {
+      audioTrackIndex = parseInt(req.query.audioTrack as string);
+    }
+    if (req.query.mediaSourceId) {
+      requestedMediaSourceId = req.query.mediaSourceId as string;
+    }
+    
+    // If not found in req.query, parse from req.url (for regex routes)
+    if (audioTrackIndex === null || !requestedMediaSourceId) {
+      const urlParts = req.url.split('?');
+      if (urlParts.length > 1) {
+        const queryParams = new URLSearchParams(urlParts[1]);
+        if (!audioTrackIndex && queryParams.has('audioTrack')) {
+          audioTrackIndex = parseInt(queryParams.get('audioTrack')!);
+        }
+        if (!requestedMediaSourceId && queryParams.has('mediaSourceId')) {
+          requestedMediaSourceId = queryParams.get('mediaSourceId')!;
+        }
+      }
+    }
+    
+    console.log('[proxyStream] Audio track query params:', {
+      fromReqQuery: { audioTrack: req.query.audioTrack, mediaSourceId: req.query.mediaSourceId },
+      parsed: { audioTrackIndex, requestedMediaSourceId },
+      url: req.url,
+    });
     
     let mediaSourceId: string | null = null;
     let audioStreamIndex: number | null = null;
