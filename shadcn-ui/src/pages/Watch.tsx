@@ -537,22 +537,56 @@ export default function Watch() {
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error('[HLS ERROR]', {
+          type: data.type,
+          fatal: data.fatal,
+          details: data.details,
+          error: data.error,
+          url: data.url,
+          response: data.response,
+        });
+        
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error('Fatal network error, trying to recover...');
-              hls.startLoad();
+              console.error('[HLS ERROR] Fatal network error, trying to recover...');
+              // Try to recover from network errors
+              try {
+                hls.startLoad();
+              } catch (err) {
+                console.error('[HLS ERROR] Recovery failed, reloading stream...', err);
+                // If recovery fails, reload the entire stream
+                if (streamUrl) {
+                  setTimeout(() => {
+                    hls.loadSource(resolveMediaUrl(streamUrl));
+                  }, 1000);
+                }
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.error('Fatal media error, trying to recover...');
-              hls.recoverMediaError();
+              console.error('[HLS ERROR] Fatal media error, trying to recover...');
+              // For media errors (codec issues), try to recover
+              try {
+                hls.recoverMediaError();
+              } catch (err) {
+                console.error('[HLS ERROR] Media recovery failed, reloading stream...', err);
+                // If recovery fails, reload the entire stream
+                if (streamUrl) {
+                  setTimeout(() => {
+                    hls.loadSource(resolveMediaUrl(streamUrl));
+                  }, 1000);
+                }
+              }
               break;
             default:
-              console.error('Fatal error, destroying HLS instance');
+              console.error('[HLS ERROR] Fatal error, destroying HLS instance');
               hls.destroy();
               setError('Failed to load video. Please try again.');
               break;
           }
+        } else {
+          // Non-fatal errors - just log them
+          console.warn('[HLS WARNING] Non-fatal error:', data);
         }
       });
 
