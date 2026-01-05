@@ -1,45 +1,48 @@
 #!/bin/bash
 
-# Check what headers the backend is sending that might prevent caching
-
-MOVIE_ID="${1:-724b048230b301b9d16fc3864d910dd4}"
-STREAM_URL="http://127.0.0.1/api/media/stream/${MOVIE_ID}/master.m3u8"
-
 echo "=== Checking Backend Response Headers ==="
 echo ""
 
-echo "Making request to: $STREAM_URL"
+MOVIE_ID="${1:-724b048230b301b9d16fc3864d910dd4}"
+TEST_URL="http://127.0.0.1:5000/api/media/stream/${MOVIE_ID}/master.m3u8"
+
+echo "1. Direct backend request (bypassing NGINX):"
+echo "   URL: $TEST_URL"
+echo ""
+BACKEND_RESPONSE=$(curl -sI "$TEST_URL" 2>&1)
+echo "$BACKEND_RESPONSE" | head -25
 echo ""
 
-echo "Full response headers:"
-curl -sI "$STREAM_URL" 2>&1
+echo "2. Checking for cache-preventing headers:"
+echo "$BACKEND_RESPONSE" | grep -iE "(cache-control|set-cookie|vary|expires|pragma)" || echo "   None found (good!)"
 echo ""
 
-echo "Checking for cache-preventing headers:"
-HEADERS=$(curl -sI "$STREAM_URL" 2>&1)
-
-if echo "$HEADERS" | grep -qi "Cache-Control.*no-store\|Cache-Control.*no-cache\|Cache-Control.*private"; then
-    echo "❌ Found cache-preventing Cache-Control header:"
-    echo "$HEADERS" | grep -i "Cache-Control"
-    echo ""
-    echo "This will prevent NGINX from caching the response!"
-elif echo "$HEADERS" | grep -qi "Cache-Control"; then
-    echo "✓ Cache-Control header found:"
-    echo "$HEADERS" | grep -i "Cache-Control"
+echo "3. Checking Content-Length:"
+CL=$(echo "$BACKEND_RESPONSE" | grep -i "content-length" | awk '{print $2}' | tr -d '\r')
+if [ -n "$CL" ]; then
+    echo "   Content-Length: $CL bytes"
+    if [ "$CL" -lt 1000 ]; then
+        echo "   ⚠️  Response is very small - might affect caching"
+    fi
 else
-    echo "⚠️  No Cache-Control header found"
+    echo "   ⚠️  No Content-Length header"
 fi
-
-if echo "$HEADERS" | grep -qi "Set-Cookie"; then
-    echo "⚠️  Found Set-Cookie header (might prevent caching):"
-    echo "$HEADERS" | grep -i "Set-Cookie"
-fi
-
-if echo "$HEADERS" | grep -qi "Transfer-Encoding.*chunked"; then
-    echo "⚠️  Response is chunked (might prevent caching)"
-fi
-
 echo ""
-echo "X-Cache-Status header:"
-echo "$HEADERS" | grep -i "X-Cache-Status" || echo "Not found"
 
+echo "4. Checking Connection header:"
+echo "$BACKEND_RESPONSE" | grep -i "connection" || echo "   Not set"
+echo ""
+
+echo "5. Full response via NGINX:"
+NGINX_RESPONSE=$(curl -sI "http://127.0.0.1/api/media/stream/${MOVIE_ID}/master.m3u8" 2>&1)
+echo "$NGINX_RESPONSE" | head -25
+echo ""
+
+echo "6. Comparing Cache-Control headers:"
+echo "   Backend:"
+echo "$BACKEND_RESPONSE" | grep -i "cache-control" || echo "      Not set"
+echo "   NGINX:"
+echo "$NGINX_RESPONSE" | grep -i "cache-control" || echo "      Not set"
+echo ""
+
+echo "=== Analysis Complete ==="
