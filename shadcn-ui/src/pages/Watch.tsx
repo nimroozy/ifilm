@@ -197,7 +197,14 @@ export default function Watch() {
       
       console.log('[Watch] Backend returned stream URL:', finalStreamUrl);
       console.log('[Watch] Audio tracks available:', tracks.length);
-      console.log('[Watch] Audio tracks data:', tracks);
+      console.log('[Watch] Audio tracks data:', JSON.stringify(tracks, null, 2));
+      
+      // Debug: Always log if tracks are empty
+      if (tracks.length === 0) {
+        console.warn('[Watch] ⚠️ No audio tracks returned from backend. Full response:', JSON.stringify(response.data, null, 2));
+      } else {
+        console.log('[Watch] ✅ Audio tracks found:', tracks.map(t => `${t.name} (${t.language})`).join(', '));
+      }
       
       // Double-check we're not redirecting before setting stream URL
       if (!redirectingRef.current) {
@@ -205,8 +212,21 @@ export default function Watch() {
       }
     } catch (err: any) {
       console.error('[Watch] Failed to load stream URL:', err);
+      console.error('[Watch] Error details:', {
+        message: err.message,
+        status: err.response?.status,
+        data: err.response?.data,
+        endpoint: `/media/movies/${mediaId}/stream`,
+      });
+      
+      // Set empty tracks array on error so UI doesn't break
+      setAudioTracks([]);
+      
       if (!redirectingRef.current) {
-        setError(err.response?.data?.message || 'Failed to load stream URL');
+        // Don't set error for 401 - might just be missing auth, stream might still work
+        if (err.response?.status !== 401) {
+          setError(err.response?.data?.message || 'Failed to load stream URL');
+        }
         setStreamUrl(null);
       }
     }
@@ -799,8 +819,8 @@ export default function Watch() {
 
                 {/* Right Side Controls */}
                 <div className="flex items-center gap-2 ml-auto">
-                  {/* Audio Track Selection */}
-                  {audioTracks && audioTracks.length > 0 && (
+                  {/* Audio Track Selection - Show if tracks exist */}
+                  {audioTracks && audioTracks.length > 0 ? (
                     <div className="relative">
                       <button
                         onClick={() => setShowAudioMenu(!showAudioMenu)}
@@ -844,6 +864,13 @@ export default function Watch() {
                         </div>
                       )}
                     </div>
+                  ) : (
+                    // Debug: Show indicator if no tracks (for debugging)
+                    process.env.NODE_ENV === 'development' && (
+                      <div className="text-white/50 text-xs" title="No audio tracks detected">
+                        <Languages className="h-5 w-5 opacity-50" />
+                      </div>
+                    )
                   )}
                   {/* Settings Menu */}
                   <div className="relative">

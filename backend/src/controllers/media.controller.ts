@@ -302,11 +302,23 @@ export const getStreamUrl = async (req: Request, res: Response) => {
     }
 
     // Get user token for authenticated requests
+    // Try Bearer token first, fallback to API key if not available
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Unauthorized' });
+    let userToken: string | null = null;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      userToken = authHeader.substring(7);
+    } else {
+      // Fallback: use API key from config if no Bearer token
+      const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
+      const config = await loadJellyfinConfig();
+      if (config) {
+        userToken = config.apiKey;
+        console.log('[getStreamUrl] No Bearer token, using API key from config');
+      } else {
+        return res.status(401).json({ message: 'Unauthorized - No authentication provided' });
+      }
     }
-    const userToken = authHeader.substring(7);
 
     // Get item details with MediaSources to extract audio tracks
     const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
@@ -377,8 +389,15 @@ export const getStreamUrl = async (req: Request, res: Response) => {
         }
       }
     } catch (error: any) {
-      console.warn('[getStreamUrl] Failed to get audio tracks:', error.message);
+      console.error('[getStreamUrl] Failed to get audio tracks:', {
+        message: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
       // Continue without audio tracks - stream will still work
+      // Return empty array so frontend knows we tried but found none
+      audioTracks = [];
     }
 
     // Return relative proxied stream URL (no protocol/host for proxy/CDN compatibility)

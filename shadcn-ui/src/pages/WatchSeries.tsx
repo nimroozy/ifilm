@@ -246,7 +246,14 @@ export default function WatchSeries() {
       
       console.log('[WatchSeries] Setting streamUrl to:', finalStreamUrl);
       console.log('[WatchSeries] Audio tracks available:', tracks.length);
-      console.log('[WatchSeries] Audio tracks data:', tracks);
+      console.log('[WatchSeries] Audio tracks data:', JSON.stringify(tracks, null, 2));
+      
+      // Debug: Always log if tracks are empty
+      if (tracks.length === 0) {
+        console.warn('[WatchSeries] ⚠️ No audio tracks returned from backend. Full response:', JSON.stringify(response.data, null, 2));
+      } else {
+        console.log('[WatchSeries] ✅ Audio tracks found:', tracks.map(t => `${t.name} (${t.language})`).join(', '));
+      }
       setStreamUrl(finalStreamUrl);
       console.log('[WatchSeries] streamUrl state updated');
     } catch (err: any) {
@@ -257,9 +264,16 @@ export default function WatchSeries() {
         data: err.response?.data,
         endpoint: `/media/movies/${episodeId}/stream`
       });
-      setError(err.response?.data?.message || err.message || 'Failed to load stream URL');
+      
+      // Set empty tracks array on error so UI doesn't break
+      setAudioTracks([]);
+      
+      // Don't set error for 401 - might just be missing auth, stream might still work
+      if (err.response?.status !== 401) {
+        setError(err.response?.data?.message || err.message || 'Failed to load stream URL');
+        toast.error(`Failed to load episode: ${err.response?.data?.message || err.message}`);
+      }
       setStreamUrl(null);
-      toast.error(`Failed to load episode: ${err.response?.data?.message || err.message}`);
     } finally {
       setLoadingStream(false);
     }
