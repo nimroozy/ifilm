@@ -752,13 +752,27 @@ export const proxyStream = async (req: Request, res: Response) => {
           }
           
           // This is a URL line - rewrite it to relative path
+          // IMPORTANT: Preserve audioTrack and mediaSourceId query params for variant playlists and segments
           let url = line.trim();
           const urlParts = url.split('?');
           const urlPath = urlParts[0];
-          const queryString = urlParts[1] || '';
+          const existingQueryString = urlParts[1] || '';
           
-          // If it's already a relative path to our proxy, leave it
+          // Build query params: merge existing params with audioTrack/mediaSourceId
+          const queryParams = new URLSearchParams(existingQueryString);
+          if (audioStreamIndex !== null) {
+            queryParams.set('audioTrack', audioStreamIndex.toString());
+          }
+          if (mediaSourceId) {
+            queryParams.set('mediaSourceId', mediaSourceId);
+          }
+          const finalQueryString = queryParams.toString();
+          
+          // If it's already a relative path to our proxy, add query params if needed
           if (url.includes('/api/media/stream/') && !url.startsWith('http')) {
+            if (finalQueryString && !existingQueryString.includes('audioTrack')) {
+              return `${url}${existingQueryString ? '&' : '?'}${finalQueryString}`;
+            }
             return line;
           }
           
@@ -767,7 +781,7 @@ export const proxyStream = async (req: Request, res: Response) => {
             const matchResult = url.match(/\/api\/media\/stream\/[^\/]+(?:\/(.+))?/);
             if (matchResult) {
               const relativePath = matchResult[0];
-              return queryString ? `${relativePath}?${queryString}` : relativePath;
+              return finalQueryString ? `${relativePath}?${finalQueryString}` : relativePath;
             }
           }
           
@@ -775,7 +789,7 @@ export const proxyStream = async (req: Request, res: Response) => {
           if (urlPath.startsWith('http')) {
             const matchResult = urlPath.match(/\/Videos\/[^\/]+\/(.+)$/);
             if (matchResult) {
-              return queryString ? `${proxyBase}/${matchResult[1]}?${queryString}` : `${proxyBase}/${matchResult[1]}`;
+              return finalQueryString ? `${proxyBase}/${matchResult[1]}?${finalQueryString}` : `${proxyBase}/${matchResult[1]}`;
             }
           }
           
@@ -783,13 +797,13 @@ export const proxyStream = async (req: Request, res: Response) => {
           if (urlPath.startsWith('/Videos/')) {
             const matchResult = urlPath.match(/\/Videos\/[^\/]+\/(.+)$/);
             if (matchResult) {
-              return queryString ? `${proxyBase}/${matchResult[1]}?${queryString}` : `${proxyBase}/${matchResult[1]}`;
+              return finalQueryString ? `${proxyBase}/${matchResult[1]}?${finalQueryString}` : `${proxyBase}/${matchResult[1]}`;
             }
           }
           
           // If it's a relative path (like hls1/main/0.ts or main.m3u8), prepend our proxy base
           if (!urlPath.startsWith('http') && !urlPath.startsWith('/')) {
-            return queryString ? `${proxyBase}/${urlPath}?${queryString}` : `${proxyBase}/${urlPath}`;
+            return finalQueryString ? `${proxyBase}/${urlPath}?${finalQueryString}` : `${proxyBase}/${urlPath}`;
           }
           
           // If it's an absolute path but not /Videos/, try to use it as-is
