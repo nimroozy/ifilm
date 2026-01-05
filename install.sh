@@ -171,7 +171,15 @@ npm run build
 # Setup database
 echo "🗄️  Setting up database..."
 sudo -u postgres createdb ifilm 2>/dev/null || echo "Database may already exist"
-npm run migrate || echo "Migrations may have already run"
+
+# Run migrations if script exists
+if [ -f "scripts/migrate.js" ]; then
+    echo "🔄 Running database migrations..."
+    npm run migrate || echo "Migrations may have already run"
+else
+    echo "⚠️  Migration script not found. Skipping migrations."
+    echo "   You may need to run migrations manually later."
+fi
 
 cd ..
 
@@ -197,8 +205,19 @@ echo "🚀 Starting services with PM2..."
 
 # Start backend
 cd backend
-pm2 start ecosystem.config.js --name ifilm-backend || pm2 restart ifilm-backend
+# Create logs directory
+mkdir -p logs
+
+# Start with PM2 using the ecosystem config from parent directory
 cd ..
+if [ -f "ecosystem.config.js" ]; then
+    PM2_CWD="$(pwd)/backend" pm2 start ecosystem.config.js --name ifilm-backend || pm2 restart ifilm-backend
+else
+    # Fallback: start directly
+    cd backend
+    pm2 start dist/server.js --name ifilm-backend || pm2 restart ifilm-backend
+    cd ..
+fi
 
 # Start frontend preview server
 cd shadcn-ui
