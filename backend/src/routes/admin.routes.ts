@@ -26,6 +26,7 @@ import {
   getCacheConfigController,
   saveCacheConfigController,
   updateCacheConfigEnabledController,
+  getCacheStatusController,
   reloadNginxConfigController,
 } from '../controllers/admin.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
@@ -44,6 +45,7 @@ router.post('/cache/clear', clearCache);
 router.get('/cache/config', getCacheConfigController);
 router.post('/cache/config', saveCacheConfigController);
 router.put('/cache/config/:cacheType/enabled', updateCacheConfigEnabledController);
+router.get('/cache/status', getCacheStatusController);
 router.post('/cache/nginx/reload', reloadNginxConfigController);
 
 // Jellyfin configuration routes

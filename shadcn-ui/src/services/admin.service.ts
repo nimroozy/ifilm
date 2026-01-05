@@ -738,6 +738,7 @@ export interface CacheConfig {
   inactive_time: string;
   cache_valid_200: string;
   cache_valid_404: string;
+  cache_directory: string;
   is_enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -763,6 +764,7 @@ export const saveCacheConfig = async (config: {
   inactiveTime: string;
   cacheValid200?: string;
   cacheValid404?: string;
+  cacheDirectory?: string;
   isEnabled?: boolean;
 }): Promise<{ success: boolean; message: string; config?: CacheConfig }> => {
   try {
@@ -771,6 +773,16 @@ export const saveCacheConfig = async (config: {
   } catch (error: any) {
     console.error('Error saving cache config:', error);
     throw new Error(error.response?.data?.message || error.response?.data?.detailedError || 'Failed to save cache configuration');
+  }
+};
+
+export const getCacheStatus = async (): Promise<{ success: boolean; status?: any[] }> => {
+  try {
+    const response = await api.get('/admin/cache/status');
+    return response.data;
+  } catch (error: any) {
+    console.error('Error getting cache status:', error);
+    throw new Error(error.response?.data?.message || error.response?.data?.detailedError || 'Failed to get cache status');
   }
 };
 

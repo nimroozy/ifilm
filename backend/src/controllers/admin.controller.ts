@@ -1082,7 +1082,7 @@ export const getCacheConfigController = async (req: Request, res: Response) => {
 
 export const saveCacheConfigController = async (req: Request, res: Response) => {
   try {
-    const { cacheType, maxSize, inactiveTime, cacheValid200, cacheValid404, isEnabled } = req.body;
+    const { cacheType, maxSize, inactiveTime, cacheValid200, cacheValid404, cacheDirectory, isEnabled } = req.body;
 
     if (!cacheType || !maxSize || !inactiveTime) {
       return res.status(400).json({
@@ -1104,6 +1104,7 @@ export const saveCacheConfigController = async (req: Request, res: Response) => 
       inactiveTime,
       cacheValid200 || '7d',
       cacheValid404 || '1h',
+      cacheDirectory || '/var/cache/nginx',
       isEnabled !== undefined ? isEnabled : true
     );
 

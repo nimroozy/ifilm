@@ -30,16 +30,18 @@ sudo chmod -R 755 "$NGINX_CACHE_DIR"
 
 # Query database for cache configs
 PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -A -F"," <<EOF > /tmp/cache_configs.txt
-SELECT cache_type, max_size, inactive_time, cache_valid_200, cache_valid_404, is_enabled
+SELECT cache_type, max_size, inactive_time, cache_valid_200, cache_valid_404, COALESCE(cache_directory, '/var/cache/nginx'), is_enabled
 FROM cache_config
 ORDER BY cache_type;
 EOF
 
 # Read cache configs
 declare -A CACHE_CONFIGS
-while IFS=',' read -r cache_type max_size inactive_time cache_valid_200 cache_valid_404 is_enabled; do
+declare -A CACHE_DIRECTORIES
+while IFS=',' read -r cache_type max_size inactive_time cache_valid_200 cache_valid_404 cache_directory is_enabled; do
     if [ "$is_enabled" = "t" ]; then
         CACHE_CONFIGS["$cache_type"]="$max_size|$inactive_time|$cache_valid_200|$cache_valid_404"
+        CACHE_DIRECTORIES["$cache_type"]="${cache_directory:-/var/cache/nginx}"
     fi
 done < /tmp/cache_configs.txt
 
@@ -47,12 +49,22 @@ done < /tmp/cache_configs.txt
 CACHE_ZONES=""
 if [ -n "${CACHE_CONFIGS[images]}" ]; then
     IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
-    CACHE_ZONES="${CACHE_ZONES}proxy_cache_path /var/cache/nginx/images levels=1:2 keys_zone=images_cache:10m max_size=${max_size} inactive=${inactive_time};\n"
+    CACHE_DIR="${CACHE_DIRECTORIES[images]:-/var/cache/nginx}/images"
+    CACHE_ZONES="${CACHE_ZONES}proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=images_cache:10m max_size=${max_size} inactive=${inactive_time};\n"
+    # Create directory if it doesn't exist
+    sudo mkdir -p "$CACHE_DIR"
+    sudo chown -R www-data:www-data "$(dirname "$CACHE_DIR")"
+    sudo chmod -R 755 "$(dirname "$CACHE_DIR")"
 fi
 
 if [ -n "${CACHE_CONFIGS[videos]}" ]; then
     IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[videos]}"
-    CACHE_ZONES="${CACHE_ZONES}proxy_cache_path /var/cache/nginx/videos levels=1:2 keys_zone=videos_cache:10m max_size=${max_size} inactive=${inactive_time};\n"
+    CACHE_DIR="${CACHE_DIRECTORIES[videos]:-/var/cache/nginx}/videos"
+    CACHE_ZONES="${CACHE_ZONES}proxy_cache_path ${CACHE_DIR} levels=1:2 keys_zone=videos_cache:10m max_size=${max_size} inactive=${inactive_time};\n"
+    # Create directory if it doesn't exist
+    sudo mkdir -p "$CACHE_DIR"
+    sudo chown -R www-data:www-data "$(dirname "$CACHE_DIR")"
+    sudo chmod -R 755 "$(dirname "$CACHE_DIR")"
 fi
 
 # Generate NGINX config from template

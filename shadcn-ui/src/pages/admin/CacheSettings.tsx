@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import AdminLayout from '@/components/admin/AdminLayout';
-import { getCacheConfig, saveCacheConfig, updateCacheConfigEnabled, reloadNginxConfig, CacheConfig } from '@/services/admin.service';
+import { getCacheConfig, saveCacheConfig, updateCacheConfigEnabled, reloadNginxConfig, getCacheStatus, CacheConfig } from '@/services/admin.service';
 import { toast } from 'sonner';
 
 export default function CacheSettings() {
@@ -16,10 +16,27 @@ export default function CacheSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [cacheStatus, setCacheStatus] = useState<any[]>([]);
+  const [checkingStatus, setCheckingStatus] = useState(false);
 
   useEffect(() => {
     loadConfigs();
+    checkCacheStatus();
   }, []);
+
+  const checkCacheStatus = async () => {
+    setCheckingStatus(true);
+    try {
+      const result = await getCacheStatus();
+      if (result.success) {
+        setCacheStatus(result.status || []);
+      }
+    } catch (error: any) {
+      console.error('Error checking cache status:', error);
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   const loadConfigs = async () => {
     try {
@@ -54,12 +71,14 @@ export default function CacheSettings() {
         inactiveTime: config.inactive_time,
         cacheValid200: config.cache_valid_200,
         cacheValid404: config.cache_valid_404,
+        cacheDirectory: config.cache_directory || '/var/cache/nginx',
         isEnabled: config.is_enabled,
       });
 
       if (result.success) {
         toast.success(`Cache configuration for ${type} saved successfully`);
         await loadConfigs();
+        await checkCacheStatus();
       } else {
         toast.error(result.message || 'Failed to save configuration');
       }
@@ -76,6 +95,7 @@ export default function CacheSettings() {
       if (result.success) {
         updateConfig(type, { is_enabled: enabled });
         toast.success(`Cache for ${type} ${enabled ? 'enabled' : 'disabled'}`);
+        await checkCacheStatus();
       } else {
         toast.error(result.message || 'Failed to update cache status');
       }
@@ -111,6 +131,8 @@ export default function CacheSettings() {
   const renderConfigCard = (type: 'images' | 'videos' | 'all', title: string, description: string) => {
     const config = getConfig(type);
     if (!config) return null;
+    
+    const status = cacheStatus.find((s: any) => s.cacheType === type);
 
     return (
       <Card key={type}>
@@ -135,7 +157,40 @@ export default function CacheSettings() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Cache Status */}
+          {status && (
+            <div className="bg-muted p-3 rounded-md">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Cache Status</span>
+                <Badge variant={status.exists ? 'default' : 'destructive'}>
+                  {status.exists ? 'Active' : 'Not Found'}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <div>Directory: <code className="text-xs">{status.directory}</code></div>
+                <div>Size: <strong>{status.size || '0'}</strong> / {config.max_size}</div>
+                {status.fileCount !== undefined && (
+                  <div>Files: <strong>{status.fileCount}</strong></div>
+                )}
+                {status.nginxStatus && (
+                  <div>NGINX: <strong>{status.nginxStatus === 'configured' ? '✓' : '✗'}</strong></div>
+                )}
+              </div>
+            </div>
+          )}
+          
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor={`${type}-cache-directory`}>Cache Directory</Label>
+              <Input
+                id={`${type}-cache-directory`}
+                value={config.cache_directory || '/var/cache/nginx'}
+                onChange={(e) => updateConfig(type, { cache_directory: e.target.value })}
+                placeholder="/var/cache/nginx or /mnt/cache"
+                disabled={!config.is_enabled}
+              />
+              <p className="text-xs text-muted-foreground">Base directory for cache storage</p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor={`${type}-max-size`}>Max Cache Size</Label>
               <Input
@@ -223,23 +278,42 @@ export default function CacheSettings() {
               Configure NGINX cache settings for images and videos to improve website performance
             </p>
           </div>
-          <Button
-            onClick={handleReloadNginx}
-            disabled={reloading}
-            variant="outline"
-          >
-            {reloading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Reloading...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Reload NGINX
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={checkCacheStatus}
+              disabled={checkingStatus}
+              variant="outline"
+            >
+              {checkingStatus ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Checking...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Check Status
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleReloadNginx}
+              disabled={reloading}
+              variant="outline"
+            >
+              {reloading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Reloading...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Reload NGINX
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         <Alert>

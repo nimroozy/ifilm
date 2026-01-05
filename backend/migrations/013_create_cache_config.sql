@@ -13,11 +13,11 @@ CREATE TABLE IF NOT EXISTS cache_config (
 );
 
 -- Insert default cache configs
-INSERT INTO cache_config (cache_type, max_size, inactive_time, cache_valid_200, cache_valid_404, is_enabled)
+INSERT INTO cache_config (cache_type, max_size, inactive_time, cache_valid_200, cache_valid_404, cache_directory, is_enabled)
 VALUES 
-    ('images', '5g', '30d', '30d', '1h', true),
-    ('videos', '50g', '7d', '7d', '1h', true),
-    ('all', '100g', '7d', '7d', '1h', true)
+    ('images', '5g', '30d', '30d', '1h', '/var/cache/nginx', true),
+    ('videos', '50g', '7d', '7d', '1h', '/var/cache/nginx', true),
+    ('all', '100g', '7d', '7d', '1h', '/var/cache/nginx', true)
 ON CONFLICT (cache_type) DO NOTHING;
 
 -- Create index

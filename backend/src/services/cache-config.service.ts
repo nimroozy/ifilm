@@ -7,6 +7,7 @@ export interface CacheConfig {
   inactive_time: string;
   cache_valid_200: string;
   cache_valid_404: string;
+  cache_directory: string;
   is_enabled: boolean;
   created_at: Date;
   updated_at: Date;
@@ -42,21 +43,23 @@ export const saveCacheConfig = async (
   inactiveTime: string,
   cacheValid200: string,
   cacheValid404: string,
+  cacheDirectory: string,
   isEnabled: boolean
 ): Promise<CacheConfig> => {
   const result = await query(
-    `INSERT INTO cache_config (cache_type, max_size, inactive_time, cache_valid_200, cache_valid_404, is_enabled, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+    `INSERT INTO cache_config (cache_type, max_size, inactive_time, cache_valid_200, cache_valid_404, cache_directory, is_enabled, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
      ON CONFLICT (cache_type) 
      DO UPDATE SET 
        max_size = EXCLUDED.max_size,
        inactive_time = EXCLUDED.inactive_time,
        cache_valid_200 = EXCLUDED.cache_valid_200,
        cache_valid_404 = EXCLUDED.cache_valid_404,
+       cache_directory = EXCLUDED.cache_directory,
        is_enabled = EXCLUDED.is_enabled,
        updated_at = CURRENT_TIMESTAMP
      RETURNING *`,
-    [cacheType, maxSize, inactiveTime, cacheValid200, cacheValid404, isEnabled]
+    [cacheType, maxSize, inactiveTime, cacheValid200, cacheValid404, cacheDirectory || '/var/cache/nginx', isEnabled]
   );
   return result.rows[0];
 };
