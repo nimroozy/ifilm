@@ -447,17 +447,20 @@ export const proxyStream = async (req: Request, res: Response) => {
     const streamPathMatch = req.path.match(/^\/stream\/(.+)$/);
     
     if (!streamPathMatch) {
-      console.error('[proxyStream] Path match failed:', {
+      console.error('[proxyStream] ❌ Path match failed:', {
         path: req.path,
         url: req.url,
         originalUrl: req.originalUrl,
         baseUrl: req.baseUrl,
+        method: req.method,
+        headers: req.headers,
       });
       return res.status(400).json({ 
         message: 'Invalid stream path', 
         path: req.path,
         url: req.url,
         originalUrl: req.originalUrl,
+        expectedPattern: '/^\\/stream\\/(.+)$/',
       });
     }
     
