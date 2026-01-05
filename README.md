@@ -164,34 +164,37 @@ docker-compose logs -f
 
 ### NGINX Reverse Proxy (Production)
 
-Example NGINX configuration:
+NGINX is automatically configured during installation to serve on port 80.
 
-```nginx
-server {
-    listen 80;
-    server_name yourdomain.com;
+**Manual Setup (if needed):**
 
-    # Frontend
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    # Backend API
-    location /api {
-        proxy_pass http://localhost:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
+```bash
+cd /opt/ifilm
+sudo ./setup-nginx.sh
 ```
+
+**Or manually:**
+
+```bash
+# Copy NGINX config
+sudo cp nginx/ifilm.conf /etc/nginx/sites-available/ifilm
+sudo ln -s /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/
+sudo rm /etc/nginx/sites-enabled/default  # Remove default site
+
+# Test and restart
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+After setup, access your application at `http://YOUR_SERVER_IP` (port 80).
+
+**NGINX Configuration Features:**
+- ✅ Serves frontend on port 80
+- ✅ Proxies `/api` requests to backend (port 5000)
+- ✅ Gzip compression enabled
+- ✅ Security headers configured
+- ✅ Static asset caching
+- ✅ Streaming support (no buffering for HLS)
 
 ## 📁 Project Structure
 
