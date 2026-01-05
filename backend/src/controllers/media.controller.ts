@@ -467,6 +467,10 @@ export const proxyStream = async (req: Request, res: Response) => {
     // Split the path to get id and filePath
     const pathParts = fullPath.split('/');
     const id = pathParts[0];
+    // For master.m3u8, filePath will be empty or 'master.m3u8'
+    // If the path is just the id, filePath will be empty (master playlist)
+    // If the path is id/master.m3u8, filePath will be 'master.m3u8' (also master playlist)
+    // If the path is id/hls1/main/0.ts, filePath will be 'hls1/main/0.ts' (segment)
     const filePath = pathParts.slice(1).join('/') || '';
     
     if (!id) {
@@ -474,8 +478,13 @@ export const proxyStream = async (req: Request, res: Response) => {
       return res.status(400).json({ 
         message: 'Invalid stream path - no id found', 
         path: req.path,
+        fullPath,
+        pathParts,
       });
     }
+    
+    // Normalize filePath: if it's 'master.m3u8', treat it as empty (master playlist request)
+    const normalizedFilePath = (filePath === 'master.m3u8' || filePath === '') ? '' : filePath;
     
     console.log('[proxyStream] Parsed:', { 
       id, 
@@ -800,7 +809,7 @@ export const proxyStream = async (req: Request, res: Response) => {
       }
     }
     
-    if (filePath) {
+    if (normalizedFilePath) {
       // For HLS segments/variants: /Videos/{id}/hls/{playlistId}/stream.m3u8 or segment files
       // Extract query parameters from the request (runtimeTicks, actualSegmentLengthTicks, etc.)
       const requestQuery = new URLSearchParams(req.url.split('?')[1] || '');
@@ -808,10 +817,10 @@ export const proxyStream = async (req: Request, res: Response) => {
       segmentParams.append('api_key', userToken);
       
       // Check if this segment is from an HLS playlist (path starts with hls*/)
-      const isFromHlsPlaylist = filePath.match(/^hls\d+\//);
+      const isFromHlsPlaylist = normalizedFilePath.match(/^hls\d+\//);
       
       // For segment files (.ts), include runtimeTicks and actualSegmentLengthTicks if present
-      if (filePath.endsWith('.ts')) {
+      if (normalizedFilePath.endsWith('.ts')) {
         if (requestQuery.has('runtimeTicks')) {
           segmentParams.append('runtimeTicks', requestQuery.get('runtimeTicks')!);
         }
@@ -856,15 +865,15 @@ export const proxyStream = async (req: Request, res: Response) => {
               audioStreamIndex,
             });
           }
-          targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${segmentParams.toString()}`;
+              targetUrl = `${serverUrl}/Videos/${id}/${normalizedFilePath}?${segmentParams.toString()}`;
         }
       } else {
         // For playlist files (.m3u8), include MediaSourceId and AudioStreamIndex if available
         // If from HLS playlist, use the HLS playlist path
         if (isFromHlsPlaylist && hlsPlaylistId) {
-          targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${filePath}?${urlParams.toString()}`;
+          targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${normalizedFilePath}?${urlParams.toString()}`;
         } else {
-          targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${urlParams.toString()}`;
+          targetUrl = `${serverUrl}/Videos/${id}/${normalizedFilePath}?${urlParams.toString()}`;
         }
       }
     } else {
@@ -887,11 +896,14 @@ export const proxyStream = async (req: Request, res: Response) => {
     console.log('[proxyStream] Proxying request to Jellyfin:', targetUrl);
     console.log('[proxyStream] Request details:', {
       id,
-      filePath,
+      filePath: normalizedFilePath,
+      originalFilePath: filePath,
       audioTrackIndex: audioTrackIndex !== null ? audioTrackIndex : 'none',
       audioStreamIndex: audioStreamIndex !== null ? audioStreamIndex : 'none',
       mediaSourceId: mediaSourceId || 'none',
       queryParams: req.query,
+      path: req.path,
+      url: req.url,
     });
 
     // Proxy the request to Jellyfin with user token
