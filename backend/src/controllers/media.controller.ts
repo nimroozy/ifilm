@@ -859,11 +859,17 @@ export const proxyStream = async (req: Request, res: Response) => {
       urlParams.append('MediaSourceId', mediaSourceId);
     }
     // Add AudioStreamIndex if specified (Jellyfin uses this to select audio track)
+    // CRITICAL: When AudioStreamIndex is present, we MUST force transcoding
+    // Jellyfin ignores AudioStreamIndex during direct-play HLS streams
     if (audioStreamIndex !== null) {
       const audioIndex = Number(audioStreamIndex);
       if (!isNaN(audioIndex)) {
         urlParams.append('AudioStreamIndex', audioIndex.toString());
+        // Force transcoding by adding AudioCodec=aac
+        // This disables direct play and makes Jellyfin honor AudioStreamIndex
+        urlParams.append('AudioCodec', 'aac');
         console.log('[proxyStream] Adding AudioStreamIndex to request:', audioIndex);
+        console.log('[proxyStream] ✅ Added AudioCodec=aac to force transcoding (required for AudioStreamIndex)');
       }
     }
     
@@ -907,6 +913,11 @@ export const proxyStream = async (req: Request, res: Response) => {
             const audioIndex = Number(audioStreamIndex);
             if (!isNaN(audioIndex)) {
               segmentParams.append('AudioStreamIndex', audioIndex.toString());
+              // Force transcoding for segments too (if not from HLS playlist)
+              if (!isFromHlsPlaylist) {
+                segmentParams.append('AudioCodec', 'aac');
+                console.log('[proxyStream] ✅ Added AudioCodec=aac to segment request (forcing transcode)');
+              }
               console.log('[proxyStream] Adding AudioStreamIndex to segment request (fallback):', {
                 audioIndex,
                 filePath,
@@ -936,7 +947,10 @@ export const proxyStream = async (req: Request, res: Response) => {
           // This is critical - Jellyfin uses this to generate segments with the correct audio
           if (normalizedFilePath === 'main.m3u8' && audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
             urlParams.set('AudioStreamIndex', String(audioStreamIndex));
+            // Force transcoding for variant playlists too
+            urlParams.set('AudioCodec', 'aac');
             console.log('[proxyStream] Adding AudioStreamIndex to variant playlist request:', audioStreamIndex);
+            console.log('[proxyStream] ✅ Added AudioCodec=aac to variant playlist (forcing transcode)');
           }
           targetUrl = `${serverUrl}/Videos/${id}/${normalizedFilePath}?${urlParams.toString()}`;
         }
