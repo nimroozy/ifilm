@@ -659,7 +659,8 @@ export const proxyStream = async (req: Request, res: Response) => {
           console.log('[proxyStream] Extracted hlsPlaylistId from req.url:', hlsPlaylistId);
         }
         // Also extract audioTrack from req.url for segment requests
-        if (!audioTrackIndex && queryParams.has('audioTrack')) {
+        // IMPORTANT: Always check for audioTrack, even if it was already set, because segments might have it
+        if (queryParams.has('audioTrack')) {
           const audioTrackValue = queryParams.get('audioTrack');
           if (audioTrackValue) {
             audioTrackIndex = parseInt(audioTrackValue);
@@ -677,7 +678,8 @@ export const proxyStream = async (req: Request, res: Response) => {
             console.log('[proxyStream] Extracted hlsPlaylistId from req.originalUrl:', hlsPlaylistId);
           }
           // Also extract audioTrack from req.originalUrl for segment requests
-          if (!audioTrackIndex && queryParams.has('audioTrack')) {
+          // IMPORTANT: Always check for audioTrack, even if it was already set, because segments might have it
+          if (queryParams.has('audioTrack')) {
             const audioTrackValue = queryParams.get('audioTrack');
             if (audioTrackValue) {
               audioTrackIndex = parseInt(audioTrackValue);
