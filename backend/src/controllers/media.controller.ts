@@ -908,7 +908,7 @@ export const proxyStream = async (req: Request, res: Response) => {
 
     // Proxy the request to Jellyfin with user token
     const response = await axios.get(targetUrl, {
-      responseType: filePath?.endsWith('.m3u8') ? 'text' : 'stream',
+      responseType: normalizedFilePath?.endsWith('.m3u8') ? 'text' : 'stream',
       headers: {
         'X-Emby-Token': userToken,
       },
@@ -917,8 +917,8 @@ export const proxyStream = async (req: Request, res: Response) => {
 
     // Set appropriate headers
     const contentType = response.headers['content-type'] || 
-                       (filePath?.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' :
-                        filePath?.endsWith('.ts') ? 'video/mp2t' :
+                       (normalizedFilePath?.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' :
+                        normalizedFilePath?.endsWith('.ts') ? 'video/mp2t' :
                         'application/octet-stream');
     
     res.setHeader('Content-Type', contentType);
@@ -930,8 +930,8 @@ export const proxyStream = async (req: Request, res: Response) => {
     // Don't set Cache-Control header - let NGINX handle caching
     // NGINX will add its own Cache-Control headers based on proxy_cache_valid settings
 
-    // For M3U8 playlists, rewrite URLs to point to our proxy (RELATIVE URLs ONLY)
-    if (filePath?.endsWith('.m3u8') || (!filePath && response.data)) {
+        // For M3U8 playlists, rewrite URLs to point to our proxy (RELATIVE URLs ONLY)
+        if (normalizedFilePath?.endsWith('.m3u8') || (!normalizedFilePath && response.data)) {
       // Use relative path only (no protocol/host for proxy/CDN compatibility)
       const proxyBase = `/api/media/stream/${id}`;
       
