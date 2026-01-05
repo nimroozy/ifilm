@@ -135,6 +135,10 @@ echo ""
 echo "🔧 Setting up backend..."
 cd backend
 
+# Clean up any duplicate files that might cause build errors
+echo "🧹 Cleaning up duplicate files..."
+rm -f src/admin.controller.ts src/admin.routes.ts src/jellyfin.service.ts src/jellyfin-libraries.service.ts src/media.controller.ts 2>/dev/null || true
+
 # Install dependencies
 npm install
 
