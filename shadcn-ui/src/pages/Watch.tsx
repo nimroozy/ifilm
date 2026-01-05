@@ -194,6 +194,7 @@ export default function Watch() {
       
       console.log('[Watch] Backend returned stream URL:', finalStreamUrl);
       console.log('[Watch] Audio tracks available:', tracks.length);
+      console.log('[Watch] Audio tracks data:', tracks);
       
       // Double-check we're not redirecting before setting stream URL
       if (!redirectingRef.current) {
@@ -746,20 +747,25 @@ export default function Watch() {
                 {/* Right Side Controls */}
                 <div className="flex items-center gap-2 ml-auto">
                   {/* Audio Track Selection */}
-                  {audioTracks.length > 1 && (
+                  {audioTracks && audioTracks.length > 0 && (
                     <div className="relative">
                       <button
                         onClick={() => setShowAudioMenu(!showAudioMenu)}
                         className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
                         aria-label="Audio Tracks"
-                        title="Audio Tracks"
+                        title={`Audio Tracks (${audioTracks.length} available)`}
                       >
                         <Languages className="h-5 w-5" />
+                        {audioTracks.length > 1 && (
+                          <span className="absolute -top-1 -right-1 bg-[#E50914] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                            {audioTracks.length}
+                          </span>
+                        )}
                       </button>
                       {showAudioMenu && (
-                        <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[200px] z-50">
+                        <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[200px] z-50 max-h-[300px] overflow-y-auto">
                           <div className="p-2">
-                            <div className="text-white text-xs font-semibold mb-2 px-2">Audio Tracks</div>
+                            <div className="text-white text-xs font-semibold mb-2 px-2">Audio Tracks ({audioTracks.length})</div>
                             {audioTracks.map((track, index) => (
                               <button
                                 key={index}

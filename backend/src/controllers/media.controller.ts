@@ -334,31 +334,46 @@ export const getStreamUrl = async (req: Request, res: Response) => {
         });
         
         if (itemResponse.data?.MediaSources && itemResponse.data.MediaSources.length > 0) {
-          const mediaSource = itemResponse.data.MediaSources[0];
-          defaultMediaSourceId = mediaSource.Id;
-          
-          // Extract audio tracks from MediaSources
-          if (mediaSource.MediaStreams) {
-            const audioStreams = mediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
-            audioTracks = audioStreams.map((stream: any, index: number) => ({
-              index: stream.Index || index,
-              language: stream.Language || 'Unknown',
-              name: stream.DisplayTitle || `${stream.Language || 'Unknown'} (${stream.Codec || 'Unknown'})`,
-              codec: stream.Codec || 'Unknown',
-              mediaSourceId: mediaSource.Id,
-            }));
+          // Check all MediaSources for audio tracks
+          for (const mediaSource of itemResponse.data.MediaSources) {
+            if (!defaultMediaSourceId) {
+              defaultMediaSourceId = mediaSource.Id;
+            }
+            
+            // Extract audio tracks from this MediaSource
+            if (mediaSource.MediaStreams && Array.isArray(mediaSource.MediaStreams)) {
+              const audioStreams = mediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
+              console.log(`[getStreamUrl] Found ${audioStreams.length} audio streams in MediaSource ${mediaSource.Id}`);
+              
+              audioStreams.forEach((stream: any, index: number) => {
+                // Check if this track already exists (avoid duplicates)
+                const existingTrack = audioTracks.find(
+                  (track) => track.language === (stream.Language || 'Unknown') && 
+                             track.codec === (stream.Codec || 'Unknown')
+                );
+                
+                if (!existingTrack) {
+                  audioTracks.push({
+                    index: stream.Index !== undefined ? stream.Index : audioTracks.length,
+                    language: stream.Language || stream.LanguageTag || 'Unknown',
+                    name: stream.DisplayTitle || stream.Title || `${stream.Language || stream.LanguageTag || 'Unknown'} (${stream.Codec || 'Unknown'})`,
+                    codec: stream.Codec || 'Unknown',
+                    mediaSourceId: mediaSource.Id,
+                  });
+                }
+              });
+            }
           }
 
-          // If no audio tracks found but we have MediaSources, add a default track
-          if (audioTracks.length === 0 && mediaSource.Id) {
-            audioTracks.push({
-              index: 0,
-              language: 'Default',
-              name: 'Default Audio',
-              codec: 'Unknown',
-              mediaSourceId: mediaSource.Id,
-            });
+          console.log(`[getStreamUrl] Total audio tracks found: ${audioTracks.length}`);
+          
+          // If no audio tracks found but we have MediaSources, don't add a default track
+          // This way the UI won't show the selector if there's only one track
+          if (audioTracks.length === 0) {
+            console.log('[getStreamUrl] No audio tracks found in MediaSources');
           }
+        } else {
+          console.log('[getStreamUrl] No MediaSources found in item response');
         }
       }
     } catch (error: any) {
