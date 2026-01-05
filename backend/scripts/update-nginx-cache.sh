@@ -159,7 +159,12 @@ sudo cp "$TMP_CONFIG" "$NGINX_CONFIG"
 # Test NGINX config
 if sudo nginx -t; then
     echo "✅ NGINX configuration is valid"
-    echo "Run 'sudo systemctl reload nginx' to apply changes"
+    # Auto-reload NGINX
+    if sudo systemctl reload nginx; then
+        echo "✅ NGINX reloaded successfully"
+    else
+        echo "⚠️  NGINX config is valid but reload failed. Run 'sudo systemctl reload nginx' manually"
+    fi
 else
     echo "❌ NGINX configuration test failed"
     exit 1
