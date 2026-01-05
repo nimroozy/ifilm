@@ -6,8 +6,8 @@ const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'ifilm',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
+  user: process.env.DB_USER || 'ifilm',
+  password: process.env.DB_PASSWORD || 'ifilm123',
 });
 
 async function createAdmin() {
@@ -29,8 +29,8 @@ async function createAdmin() {
     );
 
     if (existing.rows.length > 0) {
-      console.log('❌ User with this email or username already exists');
-      process.exit(1);
+      console.log('⚠️  User with this email or username already exists, skipping...');
+      process.exit(0); // Exit with success, don't fail installation
     }
 
     // Hash password

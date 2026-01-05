@@ -51,18 +51,26 @@ sudo bash update.sh
 
 After installation, access the admin panel:
 
-1. **Configure Jellyfin Server:**
+**Default Admin Credentials:**
+- Email: `admin@ifilm.af`
+- Password: `Haroon@00`
+
+1. **Login to Admin Panel:**
+   - Go to: `http://YOUR_SERVER_IP/admin/dashboard`
+   - Use the default admin credentials above
+
+2. **Configure Jellyfin Server:**
    - Go to: `http://YOUR_SERVER_IP/admin/jellyfin-settings`
    - Enter your Jellyfin server URL and API key
    - Test connection and save
 
-2. **Configure Cache Settings:**
+3. **Configure Cache Settings:**
    - Go to: `http://YOUR_SERVER_IP/admin/cache-settings`
    - Set cache sizes based on your server's HDD capacity
    - Click "Reload NGINX Config" to apply
 
-3. **Access Your Site:**
-   - Frontend: `http://YOUR_SERVER_IP`
+4. **Access Your Site:**
+   - Frontend: `http://YOUR_SERVER_IP` (port 80)
    - Admin Panel: `http://YOUR_SERVER_IP/admin/dashboard`
 
 ## 🛠️ Manual Installation Steps

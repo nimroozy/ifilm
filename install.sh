@@ -79,6 +79,31 @@ echo ""
 echo "8️⃣ Running database migrations..."
 npm run migrate
 
+# Create default admin user
+echo ""
+echo "8️⃣.5️⃣ Creating default admin user..."
+cd /opt/ifilm/backend
+
+# Set database environment variables for create-admin script
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=ifilm
+export DB_USER=ifilm
+export DB_PASSWORD=ifilm123
+
+if [ -f "scripts/create-admin.js" ]; then
+    # Check if admin user already exists
+    ADMIN_EXISTS=$(sudo -u postgres psql -d ifilm -t -c "SELECT COUNT(*) FROM users WHERE email = 'admin@ifilm.af';" 2>/dev/null | tr -d ' ')
+    if [ "$ADMIN_EXISTS" = "0" ] || [ -z "$ADMIN_EXISTS" ]; then
+        node scripts/create-admin.js admin@ifilm.af admin Haroon@00 2>/dev/null && echo "✅ Default admin user created" || echo "⚠️  Failed to create admin user (may already exist)"
+    else
+        echo "✅ Default admin user already exists"
+    fi
+else
+    echo "⚠️  Admin creation script not found, skipping..."
+fi
+cd /opt/ifilm
+
 # Setup frontend
 echo ""
 echo "9️⃣ Setting up frontend..."
@@ -90,7 +115,11 @@ pnpm run build
 echo ""
 echo "🔟 Configuring NGINX..."
 cp /opt/ifilm/nginx/ifilm.conf /etc/nginx/sites-available/ifilm
-ln -sf /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/
+# Remove old config if it exists and is not a symlink
+if [ -f /etc/nginx/sites-enabled/ifilm ] && [ ! -L /etc/nginx/sites-enabled/ifilm ]; then
+    rm -f /etc/nginx/sites-enabled/ifilm
+fi
+ln -sf /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/ifilm
 rm -f /etc/nginx/sites-enabled/default
 
 # Create cache directories
@@ -99,8 +128,15 @@ mkdir -p /var/cache/nginx/videos
 chown -R www-data:www-data /var/cache/nginx
 chmod -R 755 /var/cache/nginx
 
-# Update NGINX cache config from database
-/opt/ifilm/backend/scripts/update-nginx-cache.sh || echo "Cache config update skipped (will be applied after first config)"
+# Enable cache directives in NGINX config
+echo ""
+echo "🔟.5️⃣ Enabling NGINX cache directives..."
+cd /opt/ifilm/backend
+bash scripts/fix-stream-cache-manual.sh 2>/dev/null || echo "Cache directives will be enabled after first config save"
+cd /opt/ifilm
+
+# Update NGINX cache config from database (if cache_config table exists)
+/opt/ifilm/backend/scripts/update-nginx-cache.sh 2>/dev/null || echo "Cache config update skipped (will be applied after first config save)"
 
 # Test NGINX config
 nginx -t
@@ -203,9 +239,17 @@ chmod +x /opt/ifilm/update.sh
 echo ""
 echo "✅ Installation complete!"
 echo ""
+echo "📝 Default Admin Credentials:"
+echo "   Email: admin@ifilm.af"
+echo "   Password: Haroon@00"
+echo ""
+echo "🌐 Access your site:"
+echo "   Main site: http://$(hostname -I | awk '{print $1}')"
+echo "   Admin panel: http://$(hostname -I | awk '{print $1}')/admin/dashboard"
+echo ""
 echo "📝 Next steps:"
-echo "   1. Configure Jellyfin: http://$(hostname -I | awk '{print $1}')/admin/jellyfin-settings"
-echo "   2. Configure cache: http://$(hostname -I | awk '{print $1}')/admin/cache-settings"
-echo "   3. Access your site: http://$(hostname -I | awk '{print $1}')"
+echo "   1. Login with default admin credentials"
+echo "   2. Configure Jellyfin: http://$(hostname -I | awk '{print $1}')/admin/jellyfin-settings"
+echo "   3. Configure cache: http://$(hostname -I | awk '{print $1}')/admin/cache-settings"
 echo ""
 echo "🔄 To update: sudo /opt/ifilm/update.sh"
