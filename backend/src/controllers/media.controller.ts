@@ -921,14 +921,17 @@ export const proxyStream = async (req: Request, res: Response) => {
         urlParams.append('VideoStreamIndex', '0');
         urlParams.append('SubtitleStreamIndex', '-1');
         const finalUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
-        console.log('🔴 [BACKEND AUDIO] ========== MASTER PLAYLIST REQUEST ==========');
-        console.log('🔴 [BACKEND AUDIO] AudioStreamIndex:', audioStreamIndex);
-        console.log('🔴 [BACKEND AUDIO] VideoStreamIndex: 0');
-        console.log('🔴 [BACKEND AUDIO] SubtitleStreamIndex: -1');
-        console.log('🔴 [BACKEND AUDIO] Generated URL:', finalUrl);
-        console.log('🔴 [BACKEND AUDIO] ============================================');
+        console.log('[BACKEND AUDIO] ========== MASTER PLAYLIST REQUEST ==========');
+        console.log('[BACKEND AUDIO] Media ID:', id);
+        console.log('[BACKEND AUDIO] AudioStreamIndex:', audioStreamIndex);
+        console.log('[BACKEND AUDIO] VideoStreamIndex: 0');
+        console.log('[BACKEND AUDIO] SubtitleStreamIndex: -1');
+        console.log('[BACKEND AUDIO] Generated Jellyfin URL:', finalUrl);
+        console.log('[BACKEND AUDIO] Full URL for testing:', finalUrl);
+        console.log('[BACKEND AUDIO] ============================================');
       } else {
-        console.log('[proxyStream] Requesting master playlist (default audio track - no AudioStreamIndex)');
+        console.log('[BACKEND AUDIO] Requesting master playlist (default audio track - no AudioStreamIndex)');
+        console.log('[BACKEND AUDIO] Generated URL:', `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`);
       }
       targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
     }

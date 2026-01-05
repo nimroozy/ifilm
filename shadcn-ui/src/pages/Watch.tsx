@@ -262,6 +262,9 @@ export default function Watch() {
       
       
       console.log('[Watch] Backend returned stream URL:', finalStreamUrl);
+      console.log('[STREAM URL] Final URL:', finalStreamUrl);
+      console.log('[STREAM URL] Ends with master.m3u8?', finalStreamUrl?.endsWith('master.m3u8'));
+      console.log('[STREAM URL] Contains audioTrack param?', finalStreamUrl?.includes('audioTrack'));
       console.log('[Watch] Audio tracks available:', tracks.length);
       console.log('[Watch] Audio tracks data:', JSON.stringify(tracks, null, 2));
       
@@ -396,7 +399,18 @@ export default function Watch() {
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('✅ HLS manifest parsed, ready to play');
-        console.log('[Watch] Available quality levels:', hls.levels?.length || 0);
+        
+        // ============================================
+        // QUALITY DEBUGGING - CRITICAL
+        // ============================================
+        console.log('[QUALITY] ========== QUALITY DEBUG START ==========');
+        console.log('[QUALITY] hls.levels:', hls.levels);
+        console.log('[QUALITY] levels count:', hls.levels?.length || 0);
+        console.log('[QUALITY] currentLevel:', hls.currentLevel);
+        console.log('[QUALITY] autoLevelEnabled:', hls.autoLevelEnabled);
+        console.log('[STREAM URL]', streamUrl);
+        console.log('[STREAM URL] Ends with master.m3u8?', streamUrl?.endsWith('master.m3u8'));
+        console.log('[QUALITY] =========================================');
         
         // Build available qualities list from HLS levels
         if (hls.levels && hls.levels.length > 0) {
@@ -412,6 +426,10 @@ export default function Watch() {
             qualities.push({ label, value: `${height}p`, height });
           });
           
+          console.log('[QUALITY] Built qualities array:', qualities);
+          console.log('[QUALITY] Qualities count:', qualities.length);
+          console.log('[QUALITY] Will show quality selector?', qualities.length > 1);
+          
           setAvailableQualities(qualities);
           
           console.log('[Watch] Available qualities:', qualities);
@@ -422,6 +440,10 @@ export default function Watch() {
             bitrate: level.bitrate,
             name: level.name || `${level.height}p`,
           })));
+        } else {
+          console.warn('[QUALITY] ⚠️ NO HLS LEVELS FOUND - Quality selection will NOT work!');
+          console.warn('[QUALITY] This means the stream is NOT using master.m3u8 or has only one quality');
+          setAvailableQualities([]);
         }
         
         // Set initial quality based on user preference
