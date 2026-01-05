@@ -1,133 +1,187 @@
-# Quick Start Deployment Guide
+# iFilm Quick Start Guide
 
-## 🚀 Fastest Way to Deploy
+## 🚀 Installation on Fresh Ubuntu Server
 
-### From Your Local Machine
+### One Command Installation
 
 ```bash
-# 1. Make scripts executable (if not already)
-chmod +x deploy.sh setup-server.sh
-
-# 2. Run deployment
-./deploy.sh
+git clone https://github.com/nimroozy/ifilm.git && cd ifilm && chmod +x install-ubuntu.sh && sudo ./install-ubuntu.sh
 ```
 
-The script will automatically:
-- ✅ Package your application
-- ✅ Upload to server (167.172.206.254)
-- ✅ Install all dependencies (Node.js, PostgreSQL, Redis, Nginx)
-- ✅ Build backend and frontend
-- ✅ Setup database
-- ✅ Configure services
+### What Gets Installed
 
-### After Deployment
+- ✅ Node.js 20.x
+- ✅ PostgreSQL
+- ✅ PM2 (Process Manager)
+- ✅ pnpm (Package Manager)
+- ✅ NGINX (Reverse Proxy)
+- ✅ Backend API (Port 5000)
+- ✅ Frontend (Port 3000, proxied via NGINX on Port 80)
 
-1. **SSH into server:**
+### After Installation
+
+1. **Configure Jellyfin Connection:**
    ```bash
-   ssh root@167.172.206.254
-   ```
-
-2. **Configure environment variables:**
-   ```bash
-   # Backend
    nano /opt/ifilm/backend/.env
-   # Update: DB_PASSWORD, JWT_SECRET, ENCRYPTION_KEY, CORS_ORIGIN
+   ```
    
-   # Frontend
-   nano /opt/ifilm/shadcn-ui/.env
-   # Update: VITE_API_URL=http://167.172.206.254:5000/api
+   Update these values:
+   ```
+   JELLYFIN_SERVER_URL=http://your-jellyfin-server:8096
+   JELLYFIN_API_KEY=your-api-key-here
    ```
 
-3. **Generate secure secrets:**
+2. **Restart Backend:**
    ```bash
-   # JWT Secret
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-   
-   # Encryption Key
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   pm2 restart ifilm-backend
    ```
 
-4. **Start services with PM2:**
-   ```bash
-   cd /opt/ifilm
-   pm2 start ecosystem.config.js
-   
-   # Start frontend
-   cd /opt/ifilm/shadcn-ui
-   pm2 start "pnpm run preview --host 0.0.0.0 --port 3000" --name ifilm-frontend
-   pm2 save
-   ```
+3. **Access Your Application:**
+   - **Via NGINX (Port 80):** `http://YOUR_SERVER_IP`
+   - **Direct Frontend:** `http://YOUR_SERVER_IP:3000`
+   - **Backend API:** `http://YOUR_SERVER_IP:5000/api`
 
-5. **Configure Nginx:**
-   ```bash
-   # Edit nginx config
-   nano /etc/nginx/sites-available/ifilm
-   # Update server_name to: 167.172.206.254
-   
-   # Test and reload
-   nginx -t
-   systemctl reload nginx
-   ```
+## 📝 Common Commands
 
-6. **Access your application:**
-   - Frontend: http://167.172.206.254:3000
-   - Backend API: http://167.172.206.254:5000/api
-   - Via Nginx: http://167.172.206.254
-
-## 🔧 Alternative: Docker Compose
-
-If you prefer Docker:
+### Service Management
 
 ```bash
-# SSH into server
-ssh root@167.172.206.254
-
-# Navigate to project
-cd /opt/ifilm
-
-# Create .env for docker-compose
-cat > .env << EOF
-DB_PASSWORD=your_postgres_password
-JWT_SECRET=your_jwt_secret
-JWT_REFRESH_SECRET=your_refresh_secret
-ENCRYPTION_KEY=your_encryption_key
-CORS_ORIGIN=http://167.172.206.254:3000
-VITE_API_URL=http://167.172.206.254:5000/api
-EOF
-
-# Start all services
-docker-compose up -d
+# View all services
+pm2 list
 
 # View logs
-docker-compose logs -f
+pm2 logs ifilm-backend
+pm2 logs ifilm-frontend
+
+# Restart services
+pm2 restart all
+pm2 restart ifilm-backend
+pm2 restart ifilm-frontend
+
+# Stop services
+pm2 stop all
+
+# Monitor services
+pm2 monit
 ```
 
-## 📋 Checklist
+### NGINX Management
 
-- [ ] Run `./deploy.sh` from local machine
-- [ ] SSH into server and configure `.env` files
-- [ ] Generate and set secure secrets (JWT, encryption key)
-- [ ] Start services with PM2 or Docker
-- [ ] Configure Nginx
-- [ ] Test application access
-- [ ] Create admin account
-- [ ] Configure Jellyfin connection
+```bash
+# Check NGINX status
+systemctl status nginx
 
-## 🆘 Troubleshooting
+# Restart NGINX
+sudo systemctl restart nginx
 
-**Can't connect to server?**
-- Verify IP: 167.172.206.254
-- Check SSH credentials
+# Test NGINX configuration
+sudo nginx -t
 
-**Services not starting?**
-- Check logs: `pm2 logs` or `docker-compose logs`
-- Verify environment variables are set correctly
-- Check database is running: `systemctl status postgresql`
+# View NGINX logs
+sudo tail -f /var/log/nginx/error.log
+sudo tail -f /var/log/nginx/access.log
+```
 
-**Frontend can't connect to backend?**
-- Verify `VITE_API_URL` in frontend `.env`
-- Check backend is running: `pm2 status`
-- Test backend: `curl http://localhost:5000/health`
+### Database Management
 
-For detailed information, see [DEPLOYMENT.md](./DEPLOYMENT.md)
+```bash
+# Run migrations
+cd /opt/ifilm/backend
+npm run migrate
 
+# Create admin user
+npm run create-admin -- email@example.com username password
+```
+
+### Updating the Application
+
+```bash
+cd /opt/ifilm
+git pull
+cd backend && npm install && npm run build
+cd ../shadcn-ui && pnpm install && pnpm run build
+pm2 restart all
+sudo systemctl restart nginx
+```
+
+Or use the automated update script:
+```bash
+cd /opt/ifilm
+./update-server.sh
+```
+
+## 🔧 Troubleshooting
+
+### Images/Videos Not Loading
+
+1. **Check Backend Logs:**
+   ```bash
+   pm2 logs ifilm-backend --lines 50
+   ```
+
+2. **Test Backend Directly:**
+   ```bash
+   curl http://localhost:5000/health
+   curl http://localhost:5000/api/media/movies?limit=1
+   ```
+
+3. **Verify Jellyfin Connection:**
+   - Check `.env` file has correct Jellyfin URL and API key
+   - Test Jellyfin API: `curl http://your-jellyfin-server:8096/System/Info`
+
+4. **Check NGINX Proxy:**
+   ```bash
+   curl http://localhost/api/health
+   ```
+
+### Port 80 Not Working
+
+1. **Check NGINX is Running:**
+   ```bash
+   systemctl status nginx
+   ```
+
+2. **Verify NGINX Configuration:**
+   ```bash
+   sudo nginx -t
+   ```
+
+3. **Check Firewall:**
+   ```bash
+   sudo ufw status
+   sudo ufw allow 80/tcp
+   ```
+
+### Services Not Starting
+
+1. **Check PM2 Status:**
+   ```bash
+   pm2 list
+   pm2 logs
+   ```
+
+2. **Restart Services:**
+   ```bash
+   pm2 restart all
+   ```
+
+3. **Check Port Availability:**
+   ```bash
+   sudo netstat -tulpn | grep -E ':(3000|5000|80)'
+   ```
+
+## 📚 Additional Resources
+
+- **Full Documentation:** See `README.md`
+- **Troubleshooting Guide:** See `TROUBLESHOOTING.md`
+- **NGINX Configuration:** See `nginx/ifilm.conf`
+- **Update Script:** See `update-server.sh`
+
+## 🆘 Getting Help
+
+If you encounter issues:
+
+1. Check the logs: `pm2 logs`
+2. Review `TROUBLESHOOTING.md`
+3. Verify all services are running: `pm2 list`
+4. Test endpoints directly: `curl http://localhost:5000/health`
