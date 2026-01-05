@@ -333,67 +333,95 @@ export const getStreamUrl = async (req: Request, res: Response) => {
     let defaultMediaSourceId: string | null = null;
 
     try {
-      // Get user ID
-      const usersResponse = await axios.get(`${serverUrl}/Users`, {
-        headers: { 'X-Emby-Token': userToken },
-      });
-      const userId = usersResponse.data?.[0]?.Id || usersResponse.data?.Items?.[0]?.Id;
-      
-      if (userId) {
-        // Get item with MediaSources
-        const itemResponse = await axios.get(`${serverUrl}/Users/${userId}/Items/${id}`, {
+      // Try to get user ID first (for user-specific endpoint)
+      let userId: string | null = null;
+      try {
+        const usersResponse = await axios.get(`${serverUrl}/Users`, {
           headers: { 'X-Emby-Token': userToken },
         });
-        
-        if (itemResponse.data?.MediaSources && itemResponse.data.MediaSources.length > 0) {
-          // Check all MediaSources for audio tracks
-          for (const mediaSource of itemResponse.data.MediaSources) {
-            if (!defaultMediaSourceId) {
-              defaultMediaSourceId = mediaSource.Id;
-            }
-            
-            // Extract audio tracks from this MediaSource
-            if (mediaSource.MediaStreams && Array.isArray(mediaSource.MediaStreams)) {
-              const audioStreams = mediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
-              console.log(`[getStreamUrl] Found ${audioStreams.length} audio streams in MediaSource ${mediaSource.Id}`);
-              
-              audioStreams.forEach((stream: any, index: number) => {
-                // Check if this track already exists (avoid duplicates)
-                const existingTrack = audioTracks.find(
-                  (track) => track.language === (stream.Language || 'Unknown') && 
-                             track.codec === (stream.Codec || 'Unknown')
-                );
-                
-                if (!existingTrack) {
-                  audioTracks.push({
-                    index: stream.Index !== undefined ? stream.Index : audioTracks.length,
-                    language: stream.Language || stream.LanguageTag || 'Unknown',
-                    name: stream.DisplayTitle || stream.Title || `${stream.Language || stream.LanguageTag || 'Unknown'} (${stream.Codec || 'Unknown'})`,
-                    codec: stream.Codec || 'Unknown',
-                    mediaSourceId: mediaSource.Id,
-                  });
-                }
-              });
-            }
+        userId = usersResponse.data?.[0]?.Id || usersResponse.data?.Items?.[0]?.Id;
+        console.log('[getStreamUrl] Got user ID:', userId);
+      } catch (userError: any) {
+        console.warn('[getStreamUrl] Could not get user ID (may require user auth):', userError.message);
+        // Continue without user ID - will try direct endpoint
+      }
+      
+      // Try user-specific endpoint first, fallback to direct endpoint
+      let itemResponse: any = null;
+      if (userId) {
+        try {
+          itemResponse = await axios.get(`${serverUrl}/Users/${userId}/Items/${id}`, {
+            headers: { 'X-Emby-Token': userToken },
+          });
+          console.log('[getStreamUrl] Got item via user endpoint');
+        } catch (userItemError: any) {
+          console.warn('[getStreamUrl] User endpoint failed, trying direct endpoint:', userItemError.message);
+          // Fallback to direct endpoint
+          itemResponse = await axios.get(`${serverUrl}/Items/${id}`, {
+            headers: { 'X-Emby-Token': userToken },
+          });
+          console.log('[getStreamUrl] Got item via direct endpoint');
+        }
+      } else {
+        // No user ID, try direct endpoint
+        itemResponse = await axios.get(`${serverUrl}/Items/${id}`, {
+          headers: { 'X-Emby-Token': userToken },
+        });
+        console.log('[getStreamUrl] Got item via direct endpoint (no user ID)');
+      }
+      
+      if (itemResponse?.data?.MediaSources && itemResponse.data.MediaSources.length > 0) {
+        // Check all MediaSources for audio tracks
+        for (const mediaSource of itemResponse.data.MediaSources) {
+          if (!defaultMediaSourceId) {
+            defaultMediaSourceId = mediaSource.Id;
           }
-
-          console.log(`[getStreamUrl] Total audio tracks found: ${audioTracks.length}`);
           
-          // If no audio tracks found but we have MediaSources, don't add a default track
-          // This way the UI won't show the selector if there's only one track
-          if (audioTracks.length === 0) {
-            console.log('[getStreamUrl] No audio tracks found in MediaSources');
+          // Extract audio tracks from this MediaSource
+          if (mediaSource.MediaStreams && Array.isArray(mediaSource.MediaStreams)) {
+            const audioStreams = mediaSource.MediaStreams.filter((stream: any) => stream.Type === 'Audio');
+            console.log(`[getStreamUrl] Found ${audioStreams.length} audio streams in MediaSource ${mediaSource.Id}`);
+            
+            audioStreams.forEach((stream: any, index: number) => {
+              // Check if this track already exists (avoid duplicates)
+              const existingTrack = audioTracks.find(
+                (track) => track.language === (stream.Language || stream.LanguageTag || 'Unknown') && 
+                           track.codec === (stream.Codec || 'Unknown')
+              );
+              
+              if (!existingTrack) {
+                audioTracks.push({
+                  index: stream.Index !== undefined ? stream.Index : audioTracks.length,
+                  language: stream.Language || stream.LanguageTag || 'Unknown',
+                  name: stream.DisplayTitle || stream.Title || `${stream.Language || stream.LanguageTag || 'Unknown'} (${stream.Codec || 'Unknown'})`,
+                  codec: stream.Codec || 'Unknown',
+                  mediaSourceId: mediaSource.Id,
+                });
+              }
+            });
           }
-        } else {
-          console.log('[getStreamUrl] No MediaSources found in item response');
+        }
+
+        console.log(`[getStreamUrl] Total audio tracks found: ${audioTracks.length}`);
+        
+        // If no audio tracks found but we have MediaSources, don't add a default track
+        // This way the UI won't show the selector if there's only one track
+        if (audioTracks.length === 0) {
+          console.log('[getStreamUrl] No audio tracks found in MediaSources');
+        }
+      } else {
+        console.log('[getStreamUrl] No MediaSources found in item response');
+        if (itemResponse?.data) {
+          console.log('[getStreamUrl] Item data keys:', Object.keys(itemResponse.data));
         }
       }
     } catch (error: any) {
       console.error('[getStreamUrl] Failed to get audio tracks:', {
         message: error.message,
-        stack: error.stack,
-        response: error.response?.data,
         status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
       });
       // Continue without audio tracks - stream will still work
       // Return empty array so frontend knows we tried but found none
