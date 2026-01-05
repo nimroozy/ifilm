@@ -301,46 +301,18 @@ export const getStreamUrl = async (req: Request, res: Response) => {
       }
     }
 
-    // Get user token for authenticated requests
-    // Try Bearer token first, fallback to API key if not available
-    const authHeader = req.headers.authorization;
-    let userToken: string | null = null;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      userToken = authHeader.substring(7);
-      console.log('[getStreamUrl] Using Bearer token for authentication');
-    } else {
-      // Fallback: use API key from config if no Bearer token
-      const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
-      const config = await loadJellyfinConfig();
-      if (config) {
-        userToken = config.apiKey;
-        console.log('[getStreamUrl] No Bearer token, using API key from config');
-      } else {
-        console.warn('[getStreamUrl] No authentication available - continuing without audio tracks');
-        // Don't return error - stream will still work, just without audio track info
-        userToken = null;
-      }
-    }
-    
-    // If we still don't have a token, return stream URL without audio tracks
-    if (!userToken) {
-      const proxiedUrl = `/api/media/stream/${id}/master.m3u8`;
-      return res.json({
-        streamUrl: proxiedUrl,
-        type: 'hls',
-        audioTracks: [],
-        defaultMediaSourceId: null,
-      });
-    }
-
-    // Get item details with MediaSources to extract audio tracks
+    // Get Jellyfin config - we always use API key for Jellyfin API calls
+    // Bearer token is for iFilm auth, but Jellyfin needs its own API key
     const { loadJellyfinConfig } = await import('../services/jellyfin-config.service');
     const axios = require('axios');
     const config = await loadJellyfinConfig();
     if (!config) {
       return res.status(503).json({ message: 'Jellyfin server not configured' });
     }
+    
+    // Always use Jellyfin API key for Jellyfin API calls (not Bearer token)
+    const userToken = config.apiKey;
+    console.log('[getStreamUrl] Using Jellyfin API key from config for audio track detection');
 
     const serverUrl = config.serverUrl.replace(/\/+$/, '');
     let audioTracks: Array<{ index: number; language: string; name: string; codec: string; mediaSourceId: string }> = [];
