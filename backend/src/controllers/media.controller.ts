@@ -1076,14 +1076,22 @@ export const proxyStream = async (req: Request, res: Response) => {
       response.data.pipe(res);
     }
   } catch (error: any) {
-    console.error('[proxyStream] Error:', {
+    console.error('[proxyStream] ❌ Error:', {
       message: error.message,
       status: error.response?.status,
+      statusText: error.response?.statusText,
       url: error.config?.url,
+      path: req.path,
+      originalUrl: req.originalUrl,
+      stack: error.stack,
+      responseData: error.response?.data,
     });
-    res.status(error.response?.status || 500).json({ 
+    const statusCode = error.response?.status || 500;
+    res.status(statusCode).json({ 
       message: 'Failed to proxy stream',
-      error: error.message 
+      error: error.message,
+      details: error.response?.data || 'No additional details',
+      path: req.path,
     });
   }
 };
