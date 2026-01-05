@@ -645,9 +645,31 @@ export const proxyStream = async (req: Request, res: Response) => {
     let hlsPlaylistId: string | null = null; // Store playlistId when using /hls endpoint
     
     // Extract hlsPlaylistId from query params if present (from rewritten playlist URLs)
+    // Check both req.query and manually parse from req.url/req.originalUrl
     if (req.query.hlsPlaylistId) {
       hlsPlaylistId = req.query.hlsPlaylistId as string;
-      console.log('[proxyStream] Extracted hlsPlaylistId from query params:', hlsPlaylistId);
+      console.log('[proxyStream] Extracted hlsPlaylistId from req.query:', hlsPlaylistId);
+    } else {
+      // Try parsing from req.url (for regex routes)
+      const urlParts = req.url.split('?');
+      if (urlParts.length > 1) {
+        const queryParams = new URLSearchParams(urlParts[1]);
+        if (queryParams.has('hlsPlaylistId')) {
+          hlsPlaylistId = queryParams.get('hlsPlaylistId')!;
+          console.log('[proxyStream] Extracted hlsPlaylistId from req.url:', hlsPlaylistId);
+        }
+      }
+      // Also try req.originalUrl
+      if (!hlsPlaylistId && req.originalUrl !== req.url) {
+        const originalUrlParts = req.originalUrl.split('?');
+        if (originalUrlParts.length > 1) {
+          const queryParams = new URLSearchParams(originalUrlParts[1]);
+          if (queryParams.has('hlsPlaylistId')) {
+            hlsPlaylistId = queryParams.get('hlsPlaylistId')!;
+            console.log('[proxyStream] Extracted hlsPlaylistId from req.originalUrl:', hlsPlaylistId);
+          }
+        }
+      }
     }
     
     try {
