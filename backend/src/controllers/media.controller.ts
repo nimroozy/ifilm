@@ -994,8 +994,11 @@ export const proxyImage = async (req: Request, res: Response) => {
       return res.status(503).json({ message: 'Jellyfin not configured' });
     }
 
+    // Normalize serverUrl - remove trailing slash to avoid double slashes
+    const serverUrl = config.serverUrl.replace(/\/+$/, '');
+    
     // Construct Jellyfin image URL
-    const jellyfinImageUrl = `${config.serverUrl}/Items/${itemId}/Images/${imageType}?api_key=${config.apiKey}`;
+    const jellyfinImageUrl = `${serverUrl}/Items/${itemId}/Images/${imageType}?api_key=${config.apiKey}`;
 
     // Proxy the image request to Jellyfin
     const axios = require('axios');
