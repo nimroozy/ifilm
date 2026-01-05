@@ -272,31 +272,42 @@ export default function CacheSettings() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
+            <div className="space-y-4">
               <div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground mb-2">
                   Cache configuration is stored in the database and applied to NGINX when reloaded.
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Run the update script: <code className="text-xs">/opt/ifilm/backend/scripts/update-nginx-cache.sh</code>
-                </p>
+                <div className="bg-muted p-3 rounded-md">
+                  <p className="text-xs font-mono text-muted-foreground mb-1">
+                    To apply changes manually, run on your server:
+                  </p>
+                  <code className="text-xs block">
+                    cd /opt/ifilm && sudo backend/scripts/update-nginx-cache.sh && sudo systemctl reload nginx
+                  </code>
+                </div>
               </div>
-              <Button
-                onClick={handleReloadNginx}
-                disabled={reloading}
-              >
-                {reloading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Reloading...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Reload NGINX Config
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-xs text-muted-foreground">
+                  Or use the button below if backend has sudo permissions configured
+                </p>
+                <Button
+                  onClick={handleReloadNginx}
+                  disabled={reloading}
+                  variant="outline"
+                >
+                  {reloading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Reloading...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Reload NGINX Config
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
