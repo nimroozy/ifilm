@@ -56,9 +56,14 @@ done
 
 # Add/update cache zones in main nginx.conf http block
 if [ -n "${CACHE_CONFIGS[images]}" ] || [ -n "${CACHE_CONFIGS[videos]}" ]; then
-    # Remove old cache zone definitions if they exist
+    # Remove old cache zone definitions if they exist (including comments)
+    sudo sed -i '/# iFilm cache zone for images/d' "$NGINX_MAIN" 2>/dev/null || true
+    sudo sed -i '/# iFilm cache zone for videos/d' "$NGINX_MAIN" 2>/dev/null || true
     sudo sed -i '/proxy_cache_path.*images_cache/d' "$NGINX_MAIN" 2>/dev/null || true
     sudo sed -i '/proxy_cache_path.*videos_cache/d' "$NGINX_MAIN" 2>/dev/null || true
+    
+    # Also remove from site config (they shouldn't be there)
+    sudo sed -i '/proxy_cache_path/d' "$NGINX_CONFIG" 2>/dev/null || true
     
     # Create backup
     sudo cp "$NGINX_MAIN" "${NGINX_MAIN}.bak.$(date +%s)" 2>/dev/null || true
