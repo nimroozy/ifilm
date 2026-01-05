@@ -38,10 +38,12 @@ sudo cp nginx/ifilm.conf /etc/nginx/sites-available/ifilm
 sudo ln -s /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/ifilm
 
 # Verify root directive
-ROOT_DIR=$(sudo grep "root" /etc/nginx/sites-available/ifilm | grep -v "^#" | head -1 | awk '{print $2}' | tr -d ';')
+ROOT_DIR=$(sudo grep "^[[:space:]]*root" /etc/nginx/sites-available/ifilm | grep -v "^#" | head -1 | awk '{print $2}' | tr -d ';')
 if [ "$ROOT_DIR" != "/opt/ifilm/shadcn-ui/dist" ]; then
     echo "⚠️  Warning: NGINX root is set to: $ROOT_DIR"
     echo "   Expected: /opt/ifilm/shadcn-ui/dist"
+    echo "   Checking full config..."
+    sudo grep -n "root" /etc/nginx/sites-available/ifilm | head -3
 else
     echo "✅ NGINX root is correct: $ROOT_DIR"
 fi
