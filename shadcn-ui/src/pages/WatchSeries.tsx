@@ -1004,47 +1004,53 @@ export default function WatchSeries() {
                                   const currentTime = videoRef.current?.currentTime || 0;
                                   
                                   // Switch audio track on existing HLS instance without reloading
+                                  // Try to map our backend audio track to HLS.js audio track by language/codec
                                   if (hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 0) {
                                     try {
-                                      // Find the matching audio track in HLS
-                                      const hlsTrackIndex = Math.min(index, hlsRef.current.audioTracks.length - 1);
+                                      // Find matching HLS audio track by language and codec
+                                      let hlsTrackIndex = -1;
+                                      const trackLang = track.language.toLowerCase();
+                                      const trackCodec = track.codec.toLowerCase();
                                       
-                                      // Pause video temporarily to prevent issues during switch
-                                      if (videoRef.current && wasPlaying) {
-                                        videoRef.current.pause();
+                                      // First, try to find exact match by language
+                                      for (let i = 0; i < hlsRef.current.audioTracks.length; i++) {
+                                        const hlsTrack = hlsRef.current.audioTracks[i];
+                                        const hlsLang = (hlsTrack.lang || '').toLowerCase();
+                                        const hlsName = (hlsTrack.name || '').toLowerCase();
+                                        
+                                        // Match by language code (e.g., 'eng', 'fas')
+                                        if (hlsLang === trackLang || hlsLang.startsWith(trackLang) || trackLang.startsWith(hlsLang)) {
+                                          hlsTrackIndex = i;
+                                          break;
+                                        }
+                                        // Also try matching by name if it contains the language
+                                        if (hlsName.includes(trackLang) || hlsName.includes(track.name.toLowerCase())) {
+                                          hlsTrackIndex = i;
+                                          break;
+                                        }
                                       }
                                       
-                                      // Switch audio track
+                                      // Fallback to array index if no match found
+                                      if (hlsTrackIndex === -1) {
+                                        hlsTrackIndex = Math.min(index, hlsRef.current.audioTracks.length - 1);
+                                        console.warn('[WatchSeries] No language match found, using array index:', hlsTrackIndex);
+                                      }
+                                      
+                                      // Switch audio track WITHOUT pausing or reloading
                                       hlsRef.current.audioTrack = hlsTrackIndex;
                                       setSelectedAudioTrack(index);
                                       
-                                      console.log('[WatchSeries] Switched to audio track:', hlsTrackIndex, hlsRef.current.audioTracks[hlsTrackIndex]);
-                                      
-                                      // Restore playback state after a brief delay
-                                      if (videoRef.current) {
-                                        // Ensure video time is preserved
-                                        videoRef.current.currentTime = currentTime;
-                                        
-                                        // Resume playback if it was playing
-                                        if (wasPlaying) {
-                                          setTimeout(() => {
-                                            if (videoRef.current) {
-                                              videoRef.current.play().catch(err => {
-                                                console.error('[WatchSeries] Failed to resume playback:', err);
-                                              });
-                                            }
-                                          }, 100);
-                                        }
-                                      }
+                                      console.log('[WatchSeries] ✅ Switched to audio track seamlessly:', {
+                                        backendIndex: index,
+                                        hlsIndex: hlsTrackIndex,
+                                        track: track.name,
+                                        hlsTrack: hlsRef.current.audioTracks[hlsTrackIndex],
+                                      });
                                       
                                       toast.success(`Switched to ${track.name}`);
                                     } catch (error) {
                                       console.error('[WatchSeries] Failed to switch audio track:', error);
                                       toast.error('Failed to switch audio track');
-                                      // Try to resume if it was playing
-                                      if (videoRef.current && wasPlaying) {
-                                        videoRef.current.play().catch(() => {});
-                                      }
                                     }
                                   } else if (videoRef.current && videoRef.current.audioTracks && videoRef.current.audioTracks.length > 0) {
                                     // Native HLS (Safari)
