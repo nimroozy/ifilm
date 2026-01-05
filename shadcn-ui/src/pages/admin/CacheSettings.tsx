@@ -91,10 +91,18 @@ export default function CacheSettings() {
       if (result.success) {
         toast.success('NGINX configuration reloaded successfully');
       } else {
-        toast.error(result.message || 'Failed to reload NGINX');
+        const errorMsg = result.message || 'Failed to reload NGINX';
+        const hint = (error as any)?.response?.data?.hint || '';
+        toast.error(`${errorMsg}${hint ? ` - ${hint}` : ''}`, {
+          duration: 10000,
+        });
       }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to reload NGINX');
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to reload NGINX';
+      const hint = error.response?.data?.hint || '';
+      toast.error(`${errorMsg}${hint ? ` - ${hint}` : ''}`, {
+        duration: 10000,
+      });
     } finally {
       setReloading(false);
     }

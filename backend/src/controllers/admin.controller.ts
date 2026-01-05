@@ -1176,24 +1176,46 @@ export const updateCacheConfigEnabledController = async (req: Request, res: Resp
 export const reloadNginxConfigController = async (req: Request, res: Response) => {
   try {
     // Test NGINX config first
-    const { stdout: testOutput, stderr: testError } = await execAsync('sudo nginx -t');
+    let testOutput = '';
+    let testError = '';
+    let testExitCode = 0;
     
-    if (testError && !testOutput.includes('successful')) {
+    try {
+      const testResult = await execAsync('sudo nginx -t 2>&1');
+      testOutput = testResult.stdout || '';
+      testError = testResult.stderr || '';
+      // Check if test was successful - nginx -t outputs "test is successful" on success
+      if (!testOutput.includes('test is successful') && !testOutput.includes('syntax is ok')) {
+        return res.status(400).json({
+          success: false,
+          message: 'NGINX configuration test failed',
+          error: testError || testOutput,
+          output: testOutput,
+        });
+      }
+    } catch (error: any) {
+      // execAsync throws on non-zero exit code
+      const errorMessage = error.stderr || error.stdout || error.message;
       return res.status(400).json({
         success: false,
         message: 'NGINX configuration test failed',
-        error: testError,
+        error: errorMessage,
+        hint: 'Please run "sudo nginx -t" manually to see the error',
       });
     }
 
     // Reload NGINX
-    const { stdout: reloadOutput, stderr: reloadError } = await execAsync('sudo systemctl reload nginx');
-    
-    if (reloadError) {
+    let reloadOutput = '';
+    try {
+      const reloadResult = await execAsync('sudo systemctl reload nginx 2>&1');
+      reloadOutput = reloadResult.stdout || '';
+    } catch (error: any) {
+      const errorMessage = error.stderr || error.stdout || error.message;
       return res.status(500).json({
         success: false,
         message: 'Failed to reload NGINX',
-        error: reloadError,
+        error: errorMessage,
+        hint: 'The backend may not have sudo permissions. Please run "sudo systemctl reload nginx" manually or configure sudoers.',
       });
     }
 
@@ -1217,6 +1239,7 @@ export const reloadNginxConfigController = async (req: Request, res: Response) =
       success: false,
       message: 'Failed to reload NGINX',
       detailedError: error.message,
+      hint: 'The backend may not have sudo permissions. Please run the update script manually: sudo /opt/ifilm/backend/scripts/update-nginx-cache.sh && sudo systemctl reload nginx',
     });
   }
 };
