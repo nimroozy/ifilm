@@ -1388,34 +1388,51 @@ export default function Watch() {
                                     }, 100);
                                     
                                     // Step 6: Wait for player to initialize, then restore position and resume
-                                    const waitForReady = () => {
+                                    // Give HLS time to load the new transcoded stream (transcoding takes time)
+                                    const waitForReady = (attempt = 0) => {
+                                      const maxAttempts = 30; // 6 seconds max wait
+                                      
+                                      if (attempt >= maxAttempts) {
+                                        console.error('[AUDIO] ❌ Timeout waiting for video to be ready');
+                                        toast.error('Stream took too long to load. Please try again.');
+                                        return;
+                                      }
+                                      
                                       if (videoRef.current && videoRef.current.readyState >= 2) {
                                         console.log('[AUDIO] ✅ Video ready (readyState:', videoRef.current.readyState, ')');
-                                        videoRef.current.currentTime = currentTime;
-                                        console.log('[AUDIO] ✅ Position restored to:', currentTime);
                                         
-                                        if (wasPlaying) {
-                                          videoRef.current.play()
-                                            .then(() => {
-                                              console.log('[AUDIO] ✅ Playback resumed');
+                                        // Wait a bit more for transcoding to stabilize
+                                        setTimeout(() => {
+                                          if (videoRef.current) {
+                                            videoRef.current.currentTime = currentTime;
+                                            console.log('[AUDIO] ✅ Position restored to:', currentTime);
+                                            
+                                            if (wasPlaying) {
+                                              videoRef.current.play()
+                                                .then(() => {
+                                                  console.log('[AUDIO] ✅ Playback resumed');
+                                                  toast.success(`Switched to ${track.name}`);
+                                                  console.log('[AUDIO] ========== COMPLETE ==========');
+                                                })
+                                                .catch((err: any) => {
+                                                  console.error('[AUDIO] ❌ Failed to resume:', err);
+                                                  toast.error('Failed to resume playback');
+                                                });
+                                            } else {
+                                              console.log('[AUDIO] ✅ Position restored (was paused)');
                                               toast.success(`Switched to ${track.name}`);
                                               console.log('[AUDIO] ========== COMPLETE ==========');
-                                            })
-                                            .catch((err: any) => {
-                                              console.error('[AUDIO] ❌ Failed to resume:', err);
-                                              toast.error('Failed to resume playback');
-                                            });
-                                        } else {
-                                          console.log('[AUDIO] ✅ Position restored (was paused)');
-                                          toast.success(`Switched to ${track.name}`);
-                                          console.log('[AUDIO] ========== COMPLETE ==========');
-                                        }
+                                            }
+                                          }
+                                        }, 500); // Extra wait for transcoding to stabilize
                                       } else {
-                                        setTimeout(waitForReady, 200);
+                                        console.log(`[AUDIO] Video not ready yet (attempt ${attempt + 1}/${maxAttempts}), retrying...`);
+                                        setTimeout(() => waitForReady(attempt + 1), 200); // Retry after 200ms
                                       }
                                     };
                                     
-                                    setTimeout(waitForReady, 500);
+                                    // Wait longer for transcoding to start (Jellyfin needs time to begin transcoding)
+                                    setTimeout(() => waitForReady(0), 1000); // Initial wait for 1 second
                                     
                                     // Fallback timeout
                                     setTimeout(() => {
