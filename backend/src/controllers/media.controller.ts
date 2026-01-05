@@ -483,9 +483,11 @@ export const proxyStream = async (req: Request, res: Response) => {
       fullPath, 
       path: req.path, 
       url: req.url,
+      originalUrl: req.originalUrl,
       query: req.query,
       audioTrack: req.query.audioTrack,
       mediaSourceId: req.query.mediaSourceId,
+      isMasterPlaylist: !filePath || filePath === 'master.m3u8',
     });
     
     if (!jellyfinService.isInitialized()) {
@@ -617,7 +619,26 @@ export const proxyStream = async (req: Request, res: Response) => {
       originalUrl: req.originalUrl,
       path: req.path,
       fullUrl: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+      isMasterPlaylist: !filePath || filePath === 'master.m3u8',
     });
+    
+    // Special handling for master.m3u8 requests - parse query params from originalUrl
+    if ((!filePath || filePath === 'master.m3u8') && audioTrackIndex === null) {
+      console.log('[proxyStream] 🔍 Master playlist request detected, parsing query params from originalUrl');
+      const originalUrlMatch = req.originalUrl.match(/\?(.+)$/);
+      if (originalUrlMatch) {
+        const queryString = originalUrlMatch[1];
+        const queryParams = new URLSearchParams(queryString);
+        if (queryParams.has('audioTrack')) {
+          audioTrackIndex = parseInt(queryParams.get('audioTrack')!);
+          console.log('[proxyStream] ✅ Parsed audioTrack from originalUrl:', audioTrackIndex);
+        }
+        if (queryParams.has('mediaSourceId')) {
+          requestedMediaSourceId = queryParams.get('mediaSourceId')!;
+          console.log('[proxyStream] ✅ Parsed mediaSourceId from originalUrl:', requestedMediaSourceId);
+        }
+      }
+    }
     
     let mediaSourceId: string | null = null;
     let audioStreamIndex: number | null = null;
