@@ -965,11 +965,24 @@ export const proxyStream = async (req: Request, res: Response) => {
         urlParams.append('VideoStreamIndex', '0');
         urlParams.append('SubtitleStreamIndex', '-1');
         
-        // CRITICAL: Jellyfin ignores AudioStreamIndex during direct-play HLS streams
-        // We MUST force transcoding by adding AudioCodec=aac (or VideoCodec/MaxStreamingBitrate)
-        // This disables direct play and makes Jellyfin honor AudioStreamIndex
+      // CRITICAL: Jellyfin ignores AudioStreamIndex during direct-play HLS streams
+      // We MUST force transcoding to make Jellyfin honor AudioStreamIndex
+      // Try MaxStreamingBitrate first (less aggressive), then AudioCodec as fallback
+      // MaxStreamingBitrate forces transcoding without specifying exact codec (more compatible)
+      const currentBitrate = urlParams.get('MaxStreamingBitrate');
+      if (!currentBitrate) {
+        // Set a reasonable bitrate that will force transcoding for most content
+        // This is less aggressive than AudioCodec=aac and more likely to work
+        urlParams.append('MaxStreamingBitrate', '10000000'); // 10 Mbps - will force transcode for high-bitrate content
+        console.log('[BACKEND AUDIO] ✅ Added MaxStreamingBitrate=10000000 to force transcoding (more compatible than AudioCodec)');
+      }
+      
+      // Also add AudioCodec=aac as a fallback (but MaxStreamingBitrate takes precedence)
+      // Only add if not already present
+      if (!urlParams.has('AudioCodec')) {
         urlParams.append('AudioCodec', 'aac');
-        console.log('[BACKEND AUDIO] ✅ Added AudioCodec=aac to force transcoding (required for AudioStreamIndex)');
+        console.log('[BACKEND AUDIO] ✅ Added AudioCodec=aac as additional transcoding hint');
+      }
         
         const finalUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
         console.log('[BACKEND AUDIO] ========== MASTER PLAYLIST REQUEST ==========');

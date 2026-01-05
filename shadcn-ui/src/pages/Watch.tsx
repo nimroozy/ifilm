@@ -574,16 +574,47 @@ export default function Watch() {
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.error('[HLS ERROR] Fatal media error, trying to recover...');
-              // For media errors (codec issues), try to recover
-              try {
-                hls.recoverMediaError();
-              } catch (err) {
-                console.error('[HLS ERROR] Media recovery failed, reloading stream...', err);
-                // If recovery fails, reload the entire stream
-                if (streamUrl) {
+              
+              // Check if it's a codec error - these cannot be recovered from
+              if (data.details === 'bufferAddCodecError' || data.details === 'bufferAppendError') {
+                console.error('[HLS ERROR] Codec incompatibility detected - destroying and recreating HLS instance');
+                // Codec errors are fatal - we need to completely destroy and recreate
+                try {
+                  hls.destroy();
+                  hlsRef.current = null;
+                  
+                  // Clear video source
+                  if (videoRef.current) {
+                    videoRef.current.src = '';
+                    videoRef.current.load();
+                  }
+                  
+                  // Wait a bit, then recreate HLS instance
                   setTimeout(() => {
-                    hls.loadSource(resolveMediaUrl(streamUrl));
+                    if (streamUrl && videoRef.current) {
+                      console.log('[HLS ERROR] Recreating HLS instance with stream URL:', streamUrl);
+                      initializePlayer();
+                    } else {
+                      console.error('[HLS ERROR] Cannot recreate - streamUrl or videoRef is missing');
+                      setError('Codec incompatibility. Please try a different audio track or refresh the page.');
+                    }
                   }, 1000);
+                } catch (err) {
+                  console.error('[HLS ERROR] Failed to destroy/recreate HLS:', err);
+                  setError('Failed to recover from codec error. Please refresh the page.');
+                }
+              } else {
+                // For other media errors, try to recover
+                try {
+                  hls.recoverMediaError();
+                } catch (err) {
+                  console.error('[HLS ERROR] Media recovery failed, reloading stream...', err);
+                  // If recovery fails, reload the entire stream
+                  if (streamUrl) {
+                    setTimeout(() => {
+                      hls.loadSource(resolveMediaUrl(streamUrl));
+                    }, 1000);
+                  }
                 }
               }
               break;
