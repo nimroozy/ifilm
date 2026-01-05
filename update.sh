@@ -40,13 +40,13 @@ pnpm run build
 echo ""
 echo "4️⃣ Updating NGINX cache configuration..."
 cd /opt/ifilm
-/opt/ifilm/backend/scripts/update-nginx-cache.sh 2>/dev/null || echo "⚠️  Cache config update skipped"
+sudo /opt/ifilm/backend/scripts/update-nginx-cache.sh 2>/dev/null || echo "⚠️  Cache config update skipped (run manually if needed)"
 
 # Restart services
 echo ""
 echo "5️⃣ Restarting services..."
 pm2 restart all
-systemctl reload nginx
+sudo systemctl reload nginx
 
 echo ""
 echo "✅ Update complete!"
