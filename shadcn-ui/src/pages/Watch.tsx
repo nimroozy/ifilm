@@ -395,8 +395,54 @@ export default function Watch() {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log('HLS manifest parsed, ready to play');
+        console.log('✅ HLS manifest parsed, ready to play');
         console.log('[Watch] Available quality levels:', hls.levels?.length || 0);
+        
+        // Build available qualities list from HLS levels
+        if (hls.levels && hls.levels.length > 0) {
+          const qualities: Array<{ label: string; value: string; height: number }> = [
+            { label: 'Auto (Adaptive)', value: 'auto', height: 0 }
+          ];
+          
+          // Get unique heights and sort descending
+          const uniqueHeights = [...new Set(hls.levels.map((level: any) => level.height))].sort((a, b) => b - a);
+          
+          uniqueHeights.forEach((height) => {
+            const label = height >= 1080 ? '1080p' : height >= 720 ? '720p' : height >= 480 ? '480p' : `${height}p`;
+            qualities.push({ label, value: `${height}p`, height });
+          });
+          
+          setAvailableQualities(qualities);
+          
+          console.log('[Watch] Available qualities:', qualities);
+          console.log('[Watch] Quality levels:', hls.levels.map((level: any, idx: number) => ({
+            index: idx,
+            height: level.height,
+            width: level.width,
+            bitrate: level.bitrate,
+            name: level.name || `${level.height}p`,
+          })));
+        }
+        
+        // Set initial quality based on user preference
+        if (videoQuality === 'auto') {
+          hls.currentLevel = -1; // Auto - let HLS.js adapt
+          console.log('[Watch] Quality set to AUTO (adaptive bitrate)');
+        } else {
+          // Find matching level by height
+          const targetHeight = parseInt(videoQuality.replace('p', ''));
+          const targetLevel = hls.levels.findIndex((level: any) => level.height === targetHeight);
+          
+          if (targetLevel >= 0) {
+            hls.currentLevel = targetLevel;
+            console.log(`[Watch] Quality set to ${videoQuality} (level ${targetLevel}, height ${hls.levels[targetLevel].height})`);
+          } else {
+            hls.currentLevel = -1; // Fallback to auto
+            console.warn(`[Watch] Quality ${videoQuality} not found, using AUTO`);
+            setVideoQuality('auto'); // Update UI to match
+          }
+        }
+        
         console.log('[Watch] Available audio tracks:', hls.audioTracks?.length || 0);
         
         // Log audio tracks for debugging
@@ -408,19 +454,12 @@ export default function Watch() {
             groupId: track.groupId,
           })));
         } else {
-          console.warn('[Watch] No HLS audio tracks available - HLS.js may not support audio track switching for this stream');
+          console.warn('[Watch] ⚠️ No HLS audio tracks available - Jellyfin streams use AudioStreamIndex parameter, not HLS.js audio tracks');
         }
         
-        // Set audio track if one is selected
-        if (selectedAudioTrack !== null && hls.audioTracks && hls.audioTracks.length > 0) {
-          try {
-            const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
-            hls.audioTrack = trackIndex;
-            console.log('[Watch] Set audio track to index:', trackIndex, hls.audioTracks[trackIndex]);
-          } catch (error) {
-            console.warn('[Watch] Failed to set audio track:', error);
-          }
-        }
+        // NOTE: We do NOT set audio track here via hls.audioTrack
+        // Jellyfin requires AudioStreamIndex in the master.m3u8 URL
+        // Audio track is selected when loading the stream URL, not via HLS.js API
         
         // Set playback speed
         if (videoRef.current) {
@@ -430,6 +469,14 @@ export default function Watch() {
         // Resume playback position after metadata is loaded
         if (media?.id && !hasResumedRef.current) {
           resumePlayback(media.id);
+        }
+      });
+      
+      // Listen for level switches (quality changes)
+      hls.on(Hls.Events.LEVEL_SWITCHED, (event: any, data: any) => {
+        const level = hls.levels[data.level];
+        if (level) {
+          console.log(`[Watch] Quality switched to level ${data.level}: ${level.height}p @ ${Math.round(level.bitrate / 1000)}kbps`);
         }
       });
       
