@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Loader2, X, Languages } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Settings, Minimize2, Square, Loader2, X, Languages, Gauge } from 'lucide-react';
 import { api } from '@/services/api';
 import { toast } from 'sonner';
 import Hls from 'hls.js';
@@ -56,6 +56,9 @@ export default function Watch() {
   const [selectedAudioTrack, setSelectedAudioTrack] = useState<number | null>(null);
   const [showAudioMenu, setShowAudioMenu] = useState(false);
   const [currentMediaSourceId, setCurrentMediaSourceId] = useState<string | null>(null);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [videoQuality, setVideoQuality] = useState<string>('auto');
 
   useEffect(() => {
     if (!id) {
@@ -90,7 +93,7 @@ export default function Watch() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl, selectedAudioTrack]);
+  }, [streamUrl, selectedAudioTrack, playbackSpeed]);
 
   const loadMediaDetails = async () => {
     try {
@@ -279,6 +282,7 @@ export default function Watch() {
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('HLS manifest parsed, ready to play');
+        console.log('[Watch] Available quality levels:', hls.levels?.length || 0);
         
         // Set audio track if one is selected
         if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
@@ -289,6 +293,11 @@ export default function Watch() {
           } catch (error) {
             console.warn('[Watch] Failed to set audio track:', error);
           }
+        }
+        
+        // Set playback speed
+        if (videoRef.current) {
+          videoRef.current.playbackRate = playbackSpeed;
         }
       });
       
@@ -375,6 +384,43 @@ export default function Watch() {
   const toggleMute = () => {
     if (videoRef.current) {
       videoRef.current.muted = !isMuted;
+    }
+  };
+
+  const handlePlaybackSpeedChange = (speed: number) => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+      setPlaybackSpeed(speed);
+      setShowSettingsMenu(false);
+    }
+  };
+
+  const handleQualityChange = (quality: string) => {
+    setVideoQuality(quality);
+    setShowSettingsMenu(false);
+    // Note: Quality switching requires HLS level switching, which is handled by HLS.js automatically
+    // This is mainly for UI feedback
+    if (hlsRef.current && hlsRef.current.levels && hlsRef.current.levels.length > 0) {
+      // Find the level that matches the requested quality
+      const levels = hlsRef.current.levels;
+      let targetLevel = -1;
+      
+      if (quality === '1080p') {
+        targetLevel = levels.findIndex((level: any) => level.height === 1080) || levels.length - 1;
+      } else if (quality === '720p') {
+        targetLevel = levels.findIndex((level: any) => level.height === 720) || Math.floor(levels.length / 2);
+      } else if (quality === '480p') {
+        targetLevel = levels.findIndex((level: any) => level.height === 480) || 0;
+      } else {
+        // Auto - let HLS.js decide
+        targetLevel = -1;
+      }
+      
+      if (targetLevel >= 0 && targetLevel < levels.length) {
+        hlsRef.current.currentLevel = targetLevel;
+      } else {
+        hlsRef.current.currentLevel = -1; // Auto
+      }
     }
   };
 
@@ -763,7 +809,7 @@ export default function Watch() {
                         )}
                       </button>
                       {showAudioMenu && (
-                        <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[200px] z-50 max-h-[300px] overflow-y-auto">
+                        <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[200px] z-50 max-h-[300px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                           <div className="p-2">
                             <div className="text-white text-xs font-semibold mb-2 px-2">Audio Tracks ({audioTracks.length})</div>
                             {audioTracks.map((track, index) => (
@@ -792,13 +838,70 @@ export default function Watch() {
                       )}
                     </div>
                   )}
-                  <button
-                    className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
-                    aria-label="Settings"
-                    title="Settings"
-                  >
-                    <Settings className="h-5 w-5" />
-                  </button>
+                  {/* Settings Menu */}
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        setShowSettingsMenu(!showSettingsMenu);
+                        setShowAudioMenu(false); // Close audio menu if open
+                      }}
+                      className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
+                      aria-label="Settings"
+                      title="Settings"
+                    >
+                      <Settings className="h-5 w-5" />
+                    </button>
+                    {showSettingsMenu && (
+                      <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[250px] z-50" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-3">
+                          {/* Playback Speed */}
+                          <div className="mb-4">
+                            <div className="text-white text-xs font-semibold mb-2 flex items-center gap-2">
+                              <Gauge className="h-4 w-4" />
+                              Playback Speed
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => (
+                                <button
+                                  key={speed}
+                                  onClick={() => handlePlaybackSpeedChange(speed)}
+                                  className={`px-3 py-2 rounded text-sm transition-colors ${
+                                    playbackSpeed === speed
+                                      ? 'bg-[#E50914] text-white'
+                                      : 'bg-white/10 text-white/80 hover:bg-white/20'
+                                  }`}
+                                >
+                                  {speed}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Video Quality */}
+                          {hlsRef.current && hlsRef.current.levels && hlsRef.current.levels.length > 1 && (
+                            <div className="mb-4">
+                              <div className="text-white text-xs font-semibold mb-2">Quality</div>
+                              <div className="space-y-1">
+                                {['auto', '1080p', '720p', '480p'].map((quality) => (
+                                  <button
+                                    key={quality}
+                                    onClick={() => handleQualityChange(quality)}
+                                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                                      videoQuality === quality
+                                        ? 'bg-[#E50914] text-white'
+                                        : 'text-white/80 hover:bg-white/10'
+                                    }`}
+                                  >
+                                    {quality === 'auto' ? 'Auto (Best)' : quality}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={showAirPlayPicker}
                     className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
