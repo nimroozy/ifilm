@@ -399,11 +399,14 @@ export const proxyStream = async (req: Request, res: Response) => {
     const cacheKey = `jellyfin_user_token_${jellyfinUsername}`;
     let userToken: string = tokenCache.get(cacheKey) || config.apiKey;
     
+    // Normalize serverUrl - remove trailing slash to avoid double slashes
+    const serverUrl = config.serverUrl.replace(/\/+$/, '');
+    
     // If no cached token, authenticate with Jellyfin
     if (!tokenCache.get(cacheKey)) {
       try {
         console.log('[proxyStream] Authenticating with Jellyfin user:', jellyfinUsername);
-        const authResponse = await axios.post(`${config.serverUrl}/Users/authenticatebyname`, {
+        const authResponse = await axios.post(`${serverUrl}/Users/authenticatebyname`, {
           Username: jellyfinUsername,
           Pw: jellyfinPassword,
         }, {
@@ -433,13 +436,13 @@ export const proxyStream = async (req: Request, res: Response) => {
     let mediaSourceId: string | null = null;
     try {
       // Use userId endpoint to get item with user context
-      const usersResponse = await axios.get(`${config.serverUrl}/Users`, {
+      const usersResponse = await axios.get(`${serverUrl}/Users`, {
         headers: { 'X-Emby-Token': userToken },
       });
       const userId = usersResponse.data?.[0]?.Id || usersResponse.data?.Items?.[0]?.Id;
       
       if (userId) {
-        const itemResponse = await axios.get(`${config.serverUrl}/Users/${userId}/Items/${id}`, {
+        const itemResponse = await axios.get(`${serverUrl}/Users/${userId}/Items/${id}`, {
           headers: { 'X-Emby-Token': userToken },
         });
         
@@ -480,14 +483,14 @@ export const proxyStream = async (req: Request, res: Response) => {
         if (mediaSourceId) {
           segmentParams.append('MediaSourceId', mediaSourceId);
         }
-        targetUrl = `${config.serverUrl}/Videos/${id}/${filePath}?${segmentParams.toString()}`;
+        targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${segmentParams.toString()}`;
       } else {
         // For playlist files (.m3u8), include MediaSourceId if available
-        targetUrl = `${config.serverUrl}/Videos/${id}/${filePath}?${urlParams.toString()}`;
+        targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${urlParams.toString()}`;
       }
     } else {
       // Master playlist
-      targetUrl = `${config.serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
+      targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
     }
 
     console.log('[proxyStream] Proxying request to Jellyfin:', targetUrl);
