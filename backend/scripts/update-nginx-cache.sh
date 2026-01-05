@@ -67,40 +67,67 @@ if [ -n "${CACHE_CONFIGS[videos]}" ]; then
     sudo chmod -R 755 "$(dirname "$CACHE_DIR")"
 fi
 
-# Generate NGINX config from template
-if [ ! -f "$NGINX_TEMPLATE" ]; then
-    echo "Error: NGINX template not found at $NGINX_TEMPLATE"
+# Use the actual NGINX config file (not template) as base
+NGINX_BASE="$NGINX_CONFIG"
+if [ ! -f "$NGINX_BASE" ]; then
+    # Fallback to template if config doesn't exist
+    NGINX_BASE="$NGINX_TEMPLATE"
+fi
+
+if [ ! -f "$NGINX_BASE" ]; then
+    echo "Error: NGINX config or template not found"
     exit 1
 fi
 
 # Create temporary config file
 TMP_CONFIG=$(mktemp)
 
-# Add cache zones at the top (before server block)
+# Add cache zones at the top (before server block) if they exist
 if [ -n "$CACHE_ZONES" ]; then
     echo -e "$CACHE_ZONES" > "$TMP_CONFIG"
+    echo "" >> "$TMP_CONFIG"
 fi
 
-# Append template content
-cat "$NGINX_TEMPLATE" >> "$TMP_CONFIG"
+# Append base config content
+cat "$NGINX_BASE" >> "$TMP_CONFIG"
 
 # Enable cache directives in location blocks if cache is enabled
 if [ -n "${CACHE_CONFIGS[images]}" ]; then
     IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[images]}"
-    sed -i "s|# proxy_cache images_cache;|proxy_cache images_cache;|g" "$TMP_CONFIG"
-    sed -i "s|# proxy_cache_valid 200 30d;|proxy_cache_valid 200 ${cache_valid_200};|g" "$TMP_CONFIG"
-    sed -i "s|# proxy_cache_valid 404 1h;|proxy_cache_valid 404 ${cache_valid_404};|g" "$TMP_CONFIG"
-    sed -i "s|# proxy_cache_use_stale|proxy_cache_use_stale|g" "$TMP_CONFIG"
-    sed -i "s|# proxy_cache_background_update|proxy_cache_background_update|g" "$TMP_CONFIG"
-    sed -i "s|# add_header X-Cache-Status|add_header X-Cache-Status|g" "$TMP_CONFIG"
+    # Uncomment cache directives for images
+    sed -i "s|^[[:space:]]*# proxy_cache images_cache;|        proxy_cache images_cache;|g" "$TMP_CONFIG"
+    sed -i "s|^[[:space:]]*# proxy_cache_valid 200|        proxy_cache_valid 200|g" "$TMP_CONFIG"
+    sed -i "/location ~\* \^\/api\/media\/images\//,/^[[:space:]]*}/ {
+        s|^[[:space:]]*# proxy_cache_valid 200|        proxy_cache_valid 200|g
+        s|^[[:space:]]*# proxy_cache_valid 404|        proxy_cache_valid 404|g
+        s|^[[:space:]]*# proxy_cache_use_stale|        proxy_cache_use_stale|g
+        s|^[[:space:]]*# proxy_cache_background_update|        proxy_cache_background_update|g
+        s|^[[:space:]]*# add_header X-Cache-Status|        add_header X-Cache-Status|g
+    }" "$TMP_CONFIG"
+    # Replace the cache_valid lines with actual values
+    sed -i "/location ~\* \^\/api\/media\/images\//,/^[[:space:]]*}/ {
+        s|proxy_cache_valid 200 30d|proxy_cache_valid 200 ${cache_valid_200}|g
+        s|proxy_cache_valid 404 1h|proxy_cache_valid 404 ${cache_valid_404}|g
+    }" "$TMP_CONFIG"
 fi
 
 if [ -n "${CACHE_CONFIGS[videos]}" ]; then
     IFS='|' read -r max_size inactive_time cache_valid_200 cache_valid_404 <<< "${CACHE_CONFIGS[videos]}"
-    sed -i "s|# proxy_cache videos_cache;|proxy_cache videos_cache;|g" "$TMP_CONFIG"
-    sed -i "s|# proxy_cache_valid 200 7d;|proxy_cache_valid 200 ${cache_valid_200};|g" "$TMP_CONFIG"
-    sed -i "s|# proxy_cache_valid 404 1h;|proxy_cache_valid 404 ${cache_valid_404};|g" "$TMP_CONFIG"
-    sed -i "s|# proxy_cache_lock|proxy_cache_lock|g" "$TMP_CONFIG"
+    # Uncomment cache directives for videos
+    sed -i "/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
+        s|^[[:space:]]*# proxy_cache videos_cache;|        proxy_cache videos_cache;|g
+        s|^[[:space:]]*# proxy_cache_valid 200|        proxy_cache_valid 200|g
+        s|^[[:space:]]*# proxy_cache_valid 404|        proxy_cache_valid 404|g
+        s|^[[:space:]]*# proxy_cache_use_stale|        proxy_cache_use_stale|g
+        s|^[[:space:]]*# proxy_cache_background_update|        proxy_cache_background_update|g
+        s|^[[:space:]]*# proxy_cache_lock|        proxy_cache_lock|g
+        s|^[[:space:]]*# add_header X-Cache-Status|        add_header X-Cache-Status|g
+    }" "$TMP_CONFIG"
+    # Replace the cache_valid lines with actual values
+    sed -i "/location ~\* \^\/api\/media\/stream\//,/^[[:space:]]*}/ {
+        s|proxy_cache_valid 200 7d|proxy_cache_valid 200 ${cache_valid_200}|g
+        s|proxy_cache_valid 404 1h|proxy_cache_valid 404 ${cache_valid_404}|g
+    }" "$TMP_CONFIG"
 fi
 
 # Copy to NGINX config location
