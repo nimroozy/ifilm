@@ -16,7 +16,7 @@ export const getHistory = async (req: Request, res: Response) => {
     const history = await getWatchHistory(userId, limit, offset);
 
     // Enrich history items with media details from Jellyfin
-    const { default: jellyfinService } = await import('../services/jellyfin.service');
+    const { jellyfinService } = await import('../services/jellyfin.service');
     const enrichedItems = await Promise.all(
       history.map(async (item) => {
         try {
@@ -147,7 +147,7 @@ export const getContinueWatchingItems = async (req: Request, res: Response) => {
     const items = await getContinueWatching(userId);
 
     // Enrich items with media details from Jellyfin
-    const { default: jellyfinService } = await import('../services/jellyfin.service');
+    const { jellyfinService } = await import('../services/jellyfin.service');
     
     // Check if Jellyfin is initialized
     if (!jellyfinService.isInitialized()) {

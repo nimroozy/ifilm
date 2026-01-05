@@ -294,7 +294,7 @@ export default function Home() {
             {continueWatching.map((item) => (
               <div
                 key={item.id}
-                onClick={() => handlePlayClick(item.id)}
+                onClick={() => handlePlayClick(item)}
                 className="cursor-pointer"
               >
                 <div className="group relative transition-transform hover:scale-105">
