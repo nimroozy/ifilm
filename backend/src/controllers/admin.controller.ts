@@ -1262,3 +1262,101 @@ export const reloadNginxConfigController = async (req: Request, res: Response) =
     });
   }
 };
+
+export const getCacheStatusController = async (req: Request, res: Response) => {
+  try {
+    const configs = await getCacheConfig();
+    const status: any[] = [];
+    
+    for (const config of configs) {
+      if (!config.is_enabled) {
+        status.push({
+          cacheType: config.cache_type,
+          enabled: false,
+          directory: config.cache_directory || '/var/cache/nginx',
+          message: 'Cache is disabled',
+        });
+        continue;
+      }
+      
+      const cacheDir = `${config.cache_directory || '/var/cache/nginx'}/${config.cache_type}`;
+      
+      try {
+        // Check if directory exists
+        const { stdout: dirCheck } = await execAsync(`test -d "${cacheDir}" && echo "exists" || echo "missing"`);
+        const exists = dirCheck.trim() === 'exists';
+        
+        if (!exists) {
+          status.push({
+            cacheType: config.cache_type,
+            enabled: true,
+            directory: cacheDir,
+            exists: false,
+            message: 'Cache directory does not exist',
+          });
+          continue;
+        }
+        
+        // Get directory size
+        let size = '0';
+        let fileCount = '0';
+        try {
+          const { stdout: duOutput } = await execAsync(`du -sh "${cacheDir}" 2>/dev/null | cut -f1`);
+          size = duOutput.trim() || '0';
+          
+          const { stdout: countOutput } = await execAsync(`find "${cacheDir}" -type f 2>/dev/null | wc -l`);
+          fileCount = countOutput.trim() || '0';
+        } catch (e) {
+          // Ignore errors
+        }
+        
+        // Check NGINX cache zone status
+        let nginxStatus = 'unknown';
+        try {
+          const { stdout: nginxTest } = await execAsync('sudo nginx -T 2>/dev/null | grep -A 5 "proxy_cache_path.*' + config.cache_type + '" || echo ""');
+          nginxStatus = nginxTest.trim() ? 'configured' : 'not_configured';
+        } catch (e) {
+          nginxStatus = 'error';
+        }
+        
+        status.push({
+          cacheType: config.cache_type,
+          enabled: true,
+          directory: cacheDir,
+          exists: true,
+          size,
+          fileCount: parseInt(fileCount),
+          maxSize: config.max_size,
+          inactiveTime: config.inactive_time,
+          nginxStatus,
+          config: {
+            maxSize: config.max_size,
+            inactiveTime: config.inactive_time,
+            cacheValid200: config.cache_valid_200,
+            cacheValid404: config.cache_valid_404,
+          },
+        });
+      } catch (error: any) {
+        status.push({
+          cacheType: config.cache_type,
+          enabled: true,
+          directory: cacheDir,
+          error: error.message,
+          message: 'Failed to check cache status',
+        });
+      }
+    }
+    
+    res.json({
+      success: true,
+      status,
+    });
+  } catch (error: any) {
+    console.error('Get cache status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get cache status',
+      detailedError: error.message,
+    });
+  }
+};
