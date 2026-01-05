@@ -748,6 +748,9 @@ export const proxyStream = async (req: Request, res: Response) => {
       const segmentParams = new URLSearchParams();
       segmentParams.append('api_key', userToken);
       
+      // Check if this segment is from an HLS playlist (path starts with hls*/)
+      const isFromHlsPlaylist = filePath.match(/^hls\d+\//);
+      
       // For segment files (.ts), include runtimeTicks and actualSegmentLengthTicks if present
       if (filePath.endsWith('.ts')) {
         if (requestQuery.has('runtimeTicks')) {
@@ -756,17 +759,34 @@ export const proxyStream = async (req: Request, res: Response) => {
         if (requestQuery.has('actualSegmentLengthTicks')) {
           segmentParams.append('actualSegmentLengthTicks', requestQuery.get('actualSegmentLengthTicks')!);
         }
-        if (mediaSourceId) {
+        if (mediaSourceId && !isFromHlsPlaylist) {
+          // Only add MediaSourceId if not from HLS playlist (it's in the playlist path)
           segmentParams.append('MediaSourceId', mediaSourceId);
         }
-        // Include AudioStreamIndex for segments too (needed for correct audio track)
-        if (audioStreamIndex !== null) {
+        // Only include AudioStreamIndex if NOT from HLS playlist (HLS playlist segments already have correct audio)
+        if (audioStreamIndex !== null && !isFromHlsPlaylist) {
           segmentParams.append('AudioStreamIndex', audioStreamIndex.toString());
         }
-        targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${segmentParams.toString()}`;
+        
+        // If this segment is from an HLS playlist and we have the playlistId, use the HLS playlist path
+        if (isFromHlsPlaylist && hlsPlaylistId) {
+          targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${filePath}?${segmentParams.toString()}`;
+          console.log('[proxyStream] Requesting segment from HLS playlist:', {
+            playlistId: hlsPlaylistId,
+            filePath,
+            targetUrl,
+          });
+        } else {
+          targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${segmentParams.toString()}`;
+        }
       } else {
         // For playlist files (.m3u8), include MediaSourceId and AudioStreamIndex if available
-        targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${urlParams.toString()}`;
+        // If from HLS playlist, use the HLS playlist path
+        if (isFromHlsPlaylist && hlsPlaylistId) {
+          targetUrl = `${serverUrl}/Videos/${id}/hls/${hlsPlaylistId}/${filePath}?${urlParams.toString()}`;
+        } else {
+          targetUrl = `${serverUrl}/Videos/${id}/${filePath}?${urlParams.toString()}`;
+        }
       }
     } else {
       // Master playlist
