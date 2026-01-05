@@ -988,6 +988,22 @@ export const proxyStream = async (req: Request, res: Response) => {
       targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
     }
 
+    // CRITICAL VERIFICATION: Ensure AudioCodec=aac is present when AudioStreamIndex is used
+    if (audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
+      if (!targetUrl.includes('AudioCodec=aac') && !targetUrl.includes('AudioCodec%3Daac')) {
+        console.error('[proxyStream] ❌❌❌ CRITICAL ERROR: AudioStreamIndex present but AudioCodec=aac missing from URL!');
+        console.error('[proxyStream] Target URL:', targetUrl);
+        console.error('[proxyStream] This will cause Direct Play and AudioStreamIndex will be ignored!');
+        // Force add AudioCodec if missing (safety check)
+        const urlObj = new URL(targetUrl);
+        urlObj.searchParams.set('AudioCodec', 'aac');
+        targetUrl = urlObj.toString();
+        console.log('[proxyStream] ✅ Fixed: Added AudioCodec=aac to URL');
+      } else {
+        console.log('[proxyStream] ✅ VERIFIED: AudioCodec=aac is present in URL (transcoding will be forced)');
+      }
+    }
+    
     console.log('[proxyStream] Proxying request to Jellyfin:', targetUrl);
     console.log('[proxyStream] Request details:', {
       id,
@@ -996,6 +1012,7 @@ export const proxyStream = async (req: Request, res: Response) => {
       audioTrackIndex: audioTrackIndex !== null ? audioTrackIndex : 'none',
       audioStreamIndex: audioStreamIndex !== null ? audioStreamIndex : 'none',
       mediaSourceId: mediaSourceId || 'none',
+      hasAudioCodec: targetUrl.includes('AudioCodec') ? 'YES ✅' : 'NO ❌',
       queryParams: req.query,
       path: req.path,
       url: req.url,
