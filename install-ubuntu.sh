@@ -242,6 +242,43 @@ pm2 save
 # Setup PM2 startup script
 pm2 startup systemd -u root --hp /root | grep -v "PM2" | bash || echo "PM2 startup already configured"
 
+# Setup NGINX reverse proxy
+echo ""
+echo "🔧 Step 7: Setting up NGINX reverse proxy..."
+
+# Install NGINX if not present
+if ! command -v nginx &> /dev/null; then
+    echo "Installing NGINX..."
+    apt-get install -y nginx
+fi
+
+# Copy NGINX configuration
+if [ -f "nginx/ifilm.conf" ]; then
+    echo "Installing NGINX configuration..."
+    cp nginx/ifilm.conf /etc/nginx/sites-available/ifilm
+    
+    # Enable site
+    if [ ! -L /etc/nginx/sites-enabled/ifilm ]; then
+        ln -s /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/
+    fi
+    
+    # Remove default site if it exists
+    if [ -L /etc/nginx/sites-enabled/default ]; then
+        rm /etc/nginx/sites-enabled/default
+    fi
+    
+    # Test and restart NGINX
+    if nginx -t 2>/dev/null; then
+        systemctl restart nginx
+        systemctl enable nginx
+        echo "✅ NGINX configured and started"
+    else
+        echo "⚠️  NGINX configuration test failed. Skipping NGINX setup."
+    fi
+else
+    echo "⚠️  NGINX config file not found. Skipping NGINX setup."
+fi
+
 echo ""
 echo -e "${GREEN}✅ Installation complete!${NC}"
 echo ""
@@ -250,11 +287,20 @@ echo "========================"
 echo "Installation directory: $INSTALL_DIR"
 echo "Backend running on: http://localhost:5000"
 echo "Frontend running on: http://localhost:3000"
+if command -v nginx &> /dev/null && [ -L /etc/nginx/sites-enabled/ifilm ]; then
+    SERVER_IP=$(hostname -I | awk '{print $1}')
+    echo "Public access: http://$SERVER_IP (Port 80 via NGINX)"
+else
+    SERVER_IP=$(hostname -I | awk '{print $1}')
+    echo "Public access: http://$SERVER_IP:3000 (Direct)"
+fi
 echo ""
 echo "📝 Next Steps:"
 echo "1. Edit $INSTALL_DIR/backend/.env with your Jellyfin configuration"
-echo "2. Configure NGINX reverse proxy (see README.md)"
-echo "3. Access frontend at http://$(hostname -I | awk '{print $1}'):3000"
+if ! command -v nginx &> /dev/null || [ ! -L /etc/nginx/sites-enabled/ifilm ]; then
+    echo "2. Set up NGINX reverse proxy: cd $INSTALL_DIR && sudo ./setup-nginx.sh"
+fi
+echo "3. Access frontend at http://$SERVER_IP${NGINX_ENABLED:+ (or http://$SERVER_IP:3000)}"
 echo ""
 echo "📊 PM2 Status:"
 pm2 list

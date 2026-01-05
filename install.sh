@@ -230,13 +230,41 @@ pm2 save
 # Setup PM2 startup script
 pm2 startup | tail -1 | bash || echo "PM2 startup already configured"
 
+# Setup NGINX reverse proxy (if on Ubuntu/Debian)
+echo ""
+echo "🔧 Setting up NGINX reverse proxy..."
+if command -v nginx &> /dev/null || ([ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]); then
+    if ! command -v nginx &> /dev/null; then
+        echo "Installing NGINX..."
+        apt-get install -y nginx 2>/dev/null || echo "Could not install NGINX automatically"
+    fi
+    
+    if command -v nginx &> /dev/null && [ -f "nginx/ifilm.conf" ]; then
+        cp nginx/ifilm.conf /etc/nginx/sites-available/ifilm 2>/dev/null || echo "Could not copy NGINX config"
+        if [ ! -L /etc/nginx/sites-enabled/ifilm ]; then
+            ln -s /etc/nginx/sites-available/ifilm /etc/nginx/sites-enabled/ 2>/dev/null || echo "Could not enable NGINX site"
+        fi
+        if nginx -t 2>/dev/null; then
+            systemctl restart nginx 2>/dev/null || echo "Could not restart NGINX"
+            echo "✅ NGINX configured"
+        fi
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}✅ Installation complete!${NC}"
 echo ""
+SERVER_IP=$(hostname -I | awk '{print $1}' 2>/dev/null || echo "localhost")
+NGINX_ENABLED=$(systemctl is-active nginx 2>/dev/null || echo "inactive")
+
 echo "📋 Next steps:"
 echo "1. Edit backend/.env with your Jellyfin configuration"
-echo "2. Configure NGINX reverse proxy (see README.md)"
-echo "3. Access frontend at http://localhost:3000"
+if [ "$NGINX_ENABLED" != "active" ]; then
+    echo "2. Set up NGINX: cd $INSTALL_DIR && sudo ./setup-nginx.sh"
+    echo "3. Access frontend at http://$SERVER_IP:3000"
+else
+    echo "2. Access frontend at http://$SERVER_IP (Port 80)"
+fi
 echo "4. Access backend API at http://localhost:5000/api"
 echo ""
 echo "📊 PM2 Status:"
