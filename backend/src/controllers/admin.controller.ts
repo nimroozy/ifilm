@@ -1240,7 +1240,7 @@ export const reloadNginxConfigController = async (req: Request, res: Response) =
     // Log admin action
     const adminId = (req as any).user?.userId;
     if (adminId) {
-      logAction(adminId, 'nginx_reload', null, {
+      logAction(adminId, 'nginx_reload', undefined, {
         message: 'NGINX configuration reloaded',
       }).catch((err: any) => console.error('Failed to log admin action:', err));
     }
