@@ -913,7 +913,8 @@ export const proxyStream = async (req: Request, res: Response) => {
       if (audioStreamIndex !== null && typeof audioStreamIndex === 'number') {
         // Add AudioStreamIndex to urlParams for master.m3u8
         // Even though it doesn't directly affect master.m3u8, it will be preserved in rewritten URLs
-        urlParams.append('AudioStreamIndex', audioStreamIndex.toString());
+        const audioIndexStr = String(audioStreamIndex);
+        urlParams.append('AudioStreamIndex', audioIndexStr);
         console.log('[proxyStream] Requesting master playlist with AudioStreamIndex (will be applied to variant):', audioStreamIndex);
       }
       targetUrl = `${serverUrl}/Videos/${id}/master.m3u8?${urlParams.toString()}`;
