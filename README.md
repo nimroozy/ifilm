@@ -12,18 +12,28 @@ A modern, self-hosted media streaming platform built with React, Node.js, Expres
 
 ### One-Click Installation
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/nimroozy/ifilm/main/install.sh | bash
-```
-
-Or clone and run:
+**Recommended Method (Clone First):**
 
 ```bash
 git clone https://github.com/nimroozy/ifilm.git
 cd ifilm
 chmod +x install.sh
-./install.sh
+sudo ./install.sh
 ```
+
+**Alternative (Direct Download):**
+
+```bash
+# If the repository is public, you can use:
+curl -fsSL https://raw.githubusercontent.com/nimroozy/ifilm/main/install.sh | bash
+
+# Or download manually:
+wget https://raw.githubusercontent.com/nimroozy/ifilm/main/install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
+
+> **Note:** If you get a 404 error, the repository might be private. Use the clone method instead.
 
 ## 📋 Manual Installation
 
