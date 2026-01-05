@@ -514,6 +514,8 @@ export const proxyStream = async (req: Request, res: Response) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Remove Vary header to allow NGINX caching (CORS adds Vary: Origin by default)
+    res.removeHeader('Vary');
     // Don't set Cache-Control header - let NGINX handle caching
     // NGINX will add its own Cache-Control headers based on proxy_cache_valid settings
 
