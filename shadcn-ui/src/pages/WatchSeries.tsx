@@ -1459,28 +1459,33 @@ export default function WatchSeries() {
                                         setStreamUrl(null);
                                         await loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
                                         
-                                        // Wait and restore - optimized for faster loading
+                                        // Wait and restore - increased timeout for audio track switching (transcoding takes time)
                                         const waitForReady = (attempt = 0) => {
-                                          const maxAttempts = 15; // Reduced from 30 (3 seconds max)
+                                          const maxAttempts = 50; // 50 attempts * 200ms = 10 seconds (audio track switching needs more time for transcoding)
                                           if (attempt >= maxAttempts) {
-                                            toast.error('Stream took too long to load');
+                                            toast.error('Stream took too long to load. Please try again.');
                                             return;
                                           }
+                                          
+                                          // Check if video is ready (readyState >= 2 means we have enough data to play)
                                           if (videoRef.current && videoRef.current.readyState >= 2) {
-                                            // Video is ready, restore immediately
-                                            if (videoRef.current) {
-                                              videoRef.current.currentTime = currentTime;
-                                              if (wasPlaying) {
-                                                videoRef.current.play().catch(() => {});
+                                            // Wait a bit more to ensure stream is fully ready
+                                            setTimeout(() => {
+                                              if (videoRef.current) {
+                                                videoRef.current.currentTime = currentTime;
+                                                if (wasPlaying) {
+                                                  videoRef.current.play().catch(() => {});
+                                                }
+                                                toast.success(`Switched to ${track.name}`);
                                               }
-                                              toast.success(`Switched to ${track.name}`);
-                                            }
+                                            }, 300);
                                           } else {
+                                            // Check again after a short delay
                                             setTimeout(() => waitForReady(attempt + 1), 200);
                                           }
                                         };
-                                        // Start checking immediately (no initial delay)
-                                        waitForReady(0);
+                                        // Start checking after a short delay to allow stream to start loading
+                                        setTimeout(() => waitForReady(0), 500);
                                       }
                                     }}
                                     className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors touch-manipulation ${
