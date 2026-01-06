@@ -93,33 +93,54 @@ export default function WatchSeries() {
       return;
     }
 
-    // Wait for video element to be available (it's rendered when streamUrl && selectedEpisode are set)
-    // Use a small delay to ensure DOM is updated
-    const initTimer = setTimeout(() => {
-      if (!videoRef.current) {
-        console.warn('[WatchSeries] Video ref not available, will retry on next render');
-        return;
-      }
-
-      // Verify stream URL contains episode ID, not series ID
-      const streamUrlMatch = streamUrl.match(/\/stream\/([^\/]+)/);
-      const streamUrlId = streamUrlMatch ? streamUrlMatch[1] : null;
-      
-      if (streamUrlId !== selectedEpisode) {
-        console.error('[WatchSeries] Stream URL ID mismatch!');
-        if (hlsRef.current) {
-          hlsRef.current.destroy();
-          hlsRef.current = null;
+      // Wait for video element to be available (it's rendered when streamUrl && selectedEpisode are set)
+      // Use a small delay to ensure DOM is updated
+      const initTimer = setTimeout(() => {
+        if (!videoRef.current) {
+          console.warn('[WatchSeries] Video ref not available, will retry on next render');
+          return;
         }
-        setStreamUrl(null);
-        setError('Stream URL ID mismatch. Please select an episode again.');
-        return;
-      }
-      
-      console.log('[WatchSeries] Initializing player with streamUrl:', streamUrl, 'selectedEpisode:', selectedEpisode);
-      initializePlayer();
-      console.log('[WatchSeries] Player initialization completed');
-    }, 100);
+
+        // Check if video element key has changed (indicating element was recreated)
+        const currentKey = `video-${selectedEpisode}-${selectedAudioTrack}`;
+        if (videoElementKeyRef.current === currentKey && videoElementKeyRef.current !== '') {
+          // Video element hasn't been recreated yet, wait a bit longer
+          console.log('[WatchSeries] Waiting for video element recreation...');
+          const waitTimer = setTimeout(() => {
+            if (videoRef.current && streamUrl && selectedEpisode) {
+              const streamUrlMatch = streamUrl.match(/\/stream\/([^\/]+)/);
+              const streamUrlId = streamUrlMatch ? streamUrlMatch[1] : null;
+              if (streamUrlId === selectedEpisode) {
+                console.log('[WatchSeries] Video element ready, initializing player');
+                initializePlayer();
+              }
+            }
+          }, 200);
+          return () => clearTimeout(waitTimer);
+        }
+
+        // Verify stream URL contains episode ID, not series ID
+        const streamUrlMatch = streamUrl.match(/\/stream\/([^\/]+)/);
+        const streamUrlId = streamUrlMatch ? streamUrlMatch[1] : null;
+        
+        if (streamUrlId !== selectedEpisode) {
+          console.error('[WatchSeries] Stream URL ID mismatch!');
+          if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+          }
+          setStreamUrl(null);
+          setError('Stream URL ID mismatch. Please select an episode again.');
+          return;
+        }
+        
+        // Update the key ref to track this element
+        videoElementKeyRef.current = currentKey;
+        
+        console.log('[WatchSeries] Initializing player with streamUrl:', streamUrl, 'selectedEpisode:', selectedEpisode);
+        initializePlayer();
+        console.log('[WatchSeries] Player initialization completed');
+      }, 100);
 
     return () => {
       clearTimeout(initTimer);
@@ -128,7 +149,7 @@ export default function WatchSeries() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl, selectedAudioTrack, playbackSpeed]);
+  }, [streamUrl, selectedAudioTrack, playbackSpeed, selectedEpisode]);
 
   const loadSeriesDetails = async () => {
     try {
@@ -1502,8 +1523,11 @@ export default function WatchSeries() {
                                         saveAudioTrack(selectedEpisode, index);
                                       }
                                       
+                                      // Reset video element key ref to force detection of new element
+                                      videoElementKeyRef.current = '';
+                                      
                                       // Wait for React to recreate the video element (key change triggers unmount/mount)
-                                      await new Promise(resolve => setTimeout(resolve, 100));
+                                      await new Promise(resolve => setTimeout(resolve, 300));
                                       
                                       // Load new stream
                                       if (selectedEpisode) {
