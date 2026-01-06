@@ -434,18 +434,6 @@ export default function Watch() {
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('✅ HLS manifest parsed, ready to play');
         
-        // ============================================
-        // QUALITY DEBUGGING - CRITICAL
-        // ============================================
-        console.log('[QUALITY] ========== QUALITY DEBUG START ==========');
-        console.log('[QUALITY] hls.levels:', hls.levels);
-        console.log('[QUALITY] levels count:', hls.levels?.length || 0);
-        console.log('[QUALITY] currentLevel:', hls.currentLevel);
-        console.log('[QUALITY] autoLevelEnabled:', hls.autoLevelEnabled);
-        console.log('[STREAM URL]', streamUrl);
-        console.log('[STREAM URL] Ends with master.m3u8?', streamUrl?.endsWith('master.m3u8'));
-        console.log('[QUALITY] =========================================');
-        
         // Build available qualities list from HLS levels
         if (hls.levels && hls.levels.length > 0) {
           const qualities: Array<{ label: string; value: string; height: number }> = [
@@ -460,30 +448,14 @@ export default function Watch() {
             qualities.push({ label, value: `${height}p`, height });
           });
           
-          console.log('[QUALITY] Built qualities array:', qualities);
-          console.log('[QUALITY] Qualities count:', qualities.length);
-          console.log('[QUALITY] Will show quality selector?', qualities.length > 1);
-          
           setAvailableQualities(qualities);
-          
-          console.log('[Watch] Available qualities:', qualities);
-          console.log('[Watch] Quality levels:', hls.levels.map((level: any, idx: number) => ({
-            index: idx,
-            height: level.height,
-            width: level.width,
-            bitrate: level.bitrate,
-            name: level.name || `${level.height}p`,
-          })));
         } else {
-          console.warn('[QUALITY] ⚠️ NO HLS LEVELS FOUND - Quality selection will NOT work!');
-          console.warn('[QUALITY] This means the stream is NOT using master.m3u8 or has only one quality');
           setAvailableQualities([]);
         }
         
         // Set initial quality based on user preference
         if (videoQuality === 'auto') {
           hls.currentLevel = -1; // Auto - let HLS.js adapt
-          console.log('[Watch] Quality set to AUTO (adaptive bitrate)');
         } else {
           // Find matching level by height
           const targetHeight = parseInt(videoQuality.replace('p', ''));
@@ -491,31 +463,11 @@ export default function Watch() {
           
           if (targetLevel >= 0) {
             hls.currentLevel = targetLevel;
-            console.log(`[Watch] Quality set to ${videoQuality} (level ${targetLevel}, height ${hls.levels[targetLevel].height})`);
           } else {
             hls.currentLevel = -1; // Fallback to auto
-            console.warn(`[Watch] Quality ${videoQuality} not found, using AUTO`);
             setVideoQuality('auto'); // Update UI to match
           }
         }
-        
-        console.log('[Watch] Available audio tracks:', hls.audioTracks?.length || 0);
-        
-        // Log audio tracks for debugging
-        if (hls.audioTracks && hls.audioTracks.length > 0) {
-          console.log('[Watch] HLS audio tracks:', hls.audioTracks.map((track: any, idx: number) => ({
-            index: idx,
-            name: track.name,
-            lang: track.lang,
-            groupId: track.groupId,
-          })));
-        } else {
-          console.warn('[Watch] ⚠️ No HLS audio tracks available - Jellyfin streams use AudioStreamIndex parameter, not HLS.js audio tracks');
-        }
-        
-        // NOTE: We do NOT set audio track here via hls.audioTrack
-        // Jellyfin requires AudioStreamIndex in the master.m3u8 URL
-        // Audio track is selected when loading the stream URL, not via HLS.js API
         
         // Set playback speed
         if (videoRef.current) {
@@ -527,6 +479,18 @@ export default function Watch() {
           resumePlayback(media.id);
         }
       });
+      
+      // Optimize loading - hide loading overlay when video can play
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        if (loading && videoRef.current && videoRef.current.readyState >= 2) {
+          setLoading(false);
+        }
+      });
+      
+      // Hide loading when video is ready to play
+      video.addEventListener('canplay', () => {
+        setLoading(false);
+      }, { once: true });
       
       // Listen for level switches (quality changes)
       hls.on(Hls.Events.LEVEL_SWITCHED, (event: any, data: any) => {
