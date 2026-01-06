@@ -154,21 +154,34 @@ export default function Home() {
     }
   };
 
-  const handlePlayClick = (item: ContinueWatchingItem) => {
+  const handlePlayClick = (itemOrId: ContinueWatchingItem | string) => {
+    // Handle both string ID (from slider/grid) and full item object (from continue watching)
+    let item: ContinueWatchingItem | null = null;
+    let mediaId: string;
+    
+    if (typeof itemOrId === 'string') {
+      // It's just an ID (from slider or grid)
+      mediaId = itemOrId;
+    } else {
+      // It's a full item object (from continue watching)
+      item = itemOrId;
+      mediaId = item.id;
+    }
+    
     if (!isAuthenticated) {
       // Store the media ID to play after login
-      const redirectPath = item.type === 'episode' && (item as any).seriesId
-        ? `/watch-series/${(item as any).seriesId}?episode=${item.id}`
-        : `/watch/${item.id}`;
+      const redirectPath = item && item.type === 'episode' && (item as any).seriesId
+        ? `/watch-series/${(item as any).seriesId}?episode=${mediaId}`
+        : `/watch/${mediaId}`;
       localStorage.setItem('redirectAfterLogin', redirectPath);
       navigate('/login');
       toast.info('Please login to watch this content');
     } else {
       // For episodes, navigate to series page with episode ID
-      if (item.type === 'episode' && (item as any).seriesId) {
-        navigate(`/watch-series/${(item as any).seriesId}?episode=${item.id}`);
+      if (item && item.type === 'episode' && (item as any).seriesId) {
+        navigate(`/watch-series/${(item as any).seriesId}?episode=${mediaId}`);
       } else {
-        navigate(`/watch/${item.id}`);
+        navigate(`/watch/${mediaId}`);
       }
     }
   };
