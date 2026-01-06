@@ -416,8 +416,20 @@ export default function WatchSeries() {
 
     const video = videoRef.current;
     
-    // Clear any existing source
+    // Clear any existing source and MediaSource
     video.src = '';
+    video.removeAttribute('src');
+    if (video.srcObject) {
+      const mediaSource = video.srcObject as MediaSource;
+      if (mediaSource.readyState === 'open') {
+        try {
+          mediaSource.endOfStream();
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+      video.srcObject = null;
+    }
     video.load();
     setProgress(0);
     setDuration(0);
@@ -1287,6 +1299,7 @@ export default function WatchSeries() {
             }`}
           >
             <video
+              key={`video-${selectedEpisode}-${selectedAudioTrack}`}
               ref={videoRef}
               className="w-full h-full object-contain"
               playsInline

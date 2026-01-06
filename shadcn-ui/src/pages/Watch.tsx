@@ -1491,29 +1491,29 @@ export default function Watch() {
                                         hlsRef.current = null;
                                       }
                                       
-                                      // Wait a bit to ensure cleanup is complete
-                                      await new Promise(resolve => setTimeout(resolve, 300));
-                                      
-                                      // Update state
+                                      // Update state FIRST - this will trigger video element recreation via key prop
                                       setSelectedAudioTrack(index);
                                       if (media?.id) {
                                         saveAudioTrack(media.id, index);
                                       }
+                                      
+                                      // Wait for React to recreate the video element (key change triggers unmount/mount)
+                                      await new Promise(resolve => setTimeout(resolve, 100));
                                       
                                       // Load new stream
                                       if (media?.id) {
                                         setStreamUrl(null);
                                         await loadStreamUrl(media.id, index, track.mediaSourceId);
                                         
-                                        // Wait and restore - increased timeout for audio track switching (transcoding takes time)
+                                        // Wait for video element to be recreated and stream to load
                                         const waitForReady = (attempt = 0) => {
-                                          const maxAttempts = 50; // 50 attempts * 200ms = 10 seconds (audio track switching needs more time for transcoding)
+                                          const maxAttempts = 50; // 50 attempts * 200ms = 10 seconds
                                           if (attempt >= maxAttempts) {
                                             toast.error('Stream took too long to load. Please try again.');
                                             return;
                                           }
                                           
-                                          // Check if video is ready (readyState >= 2 means we have enough data to play)
+                                          // Check if video element exists and is ready
                                           if (videoRef.current && videoRef.current.readyState >= 2) {
                                             // Wait a bit more to ensure stream is fully ready
                                             setTimeout(() => {
@@ -1530,7 +1530,7 @@ export default function Watch() {
                                             setTimeout(() => waitForReady(attempt + 1), 200);
                                           }
                                         };
-                                        // Start checking after a short delay to allow stream to start loading
+                                        // Start checking after a delay to allow video element recreation and stream loading
                                         setTimeout(() => waitForReady(0), 500);
                                       }
                                     }}
