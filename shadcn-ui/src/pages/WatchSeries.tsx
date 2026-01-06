@@ -459,16 +459,13 @@ export default function WatchSeries() {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log('HLS manifest parsed, ready to play');
-        console.log('[WatchSeries] Available quality levels:', hls.levels?.length || 0);
-        console.log('[WatchSeries] Available audio tracks:', hls.audioTracks.length);
+        console.log('✅ HLS manifest parsed, ready to play');
         
         // Set audio track if one is selected
         if (selectedAudioTrack !== null && hls.audioTracks.length > 0) {
           try {
             const trackIndex = Math.min(selectedAudioTrack, hls.audioTracks.length - 1);
             hls.audioTrack = trackIndex;
-            console.log('[WatchSeries] Set audio track to index:', trackIndex, hls.audioTracks[trackIndex]);
           } catch (error) {
             console.warn('[WatchSeries] Failed to set audio track:', error);
           }
@@ -482,9 +479,20 @@ export default function WatchSeries() {
         // Auto-play when manifest is parsed (user already interacted by clicking episode)
         video.play().catch(err => {
           console.error('Error auto-playing video:', err);
-          // If autoplay fails, user can click play button
         });
       });
+      
+      // Optimize loading - hide loading overlay when video can play
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        if (loading && videoRef.current && videoRef.current.readyState >= 2) {
+          setLoading(false);
+        }
+      });
+      
+      // Hide loading when video is ready to play
+      video.addEventListener('canplay', () => {
+        setLoading(false);
+      }, { once: true });
       
       // Listen for audio track changes
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
@@ -509,27 +517,73 @@ export default function WatchSeries() {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error('Fatal network error, trying to recover...');
-              hls.startLoad();
+              console.error('[HLS ERROR] Network error:', data);
+              // Try to recover quickly
+              try {
+                hls.startLoad();
+              } catch (err) {
+                console.error('[HLS ERROR] Failed to recover from network error:', err);
+                setError('Network error. Please check your connection and try again.');
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.error('Fatal media error, trying to recover...');
-              hls.recoverMediaError();
+              console.error('[HLS ERROR] Media error:', data);
+              
+              // Check for fatal codec errors that require stream reload
+              if (data.details === 'bufferAddCodecError' || data.details === 'bufferAppendError') {
+                console.error('[HLS ERROR] Fatal codec error, destroying and recreating HLS instance');
+                try {
+                  hls.destroy();
+                  hlsRef.current = null;
+                  
+                  // Reduced delay for faster recovery
+                  setTimeout(() => {
+                    if (streamUrl && videoRef.current) {
+                      console.log('[HLS ERROR] Recreating HLS instance with stream URL:', streamUrl);
+                      initializePlayer();
+                    }
+                  }, 500); // Reduced from 1000ms
+                } catch (err) {
+                  console.error('[HLS ERROR] Failed to destroy/recreate HLS:', err);
+                  setError('Failed to recover from codec error. Please refresh the page.');
+                }
+              } else {
+                // For other media errors, try to recover
+                try {
+                  hls.recoverMediaError();
+                } catch (err) {
+                  console.error('[HLS ERROR] Media recovery failed, reloading stream...', err);
+                  // If recovery fails, reload the entire stream
+                  if (streamUrl) {
+                    setTimeout(() => {
+                      hls.loadSource(resolveMediaUrl(streamUrl));
+                    }, 500); // Reduced from 1000ms
+                  }
+                }
+              }
               break;
             default:
-              console.error('Fatal error, destroying HLS instance');
+              console.error('[HLS ERROR] Fatal error, destroying HLS instance');
               hls.destroy();
               setError('Failed to load video. Please try again.');
               break;
           }
+        } else {
+          // Non-fatal errors - just log them
+          console.warn('[HLS WARNING] Non-fatal error:', data);
         }
       });
 
       hlsRef.current = hls;
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
+      // Native HLS support (Safari) - Optimized for faster loading
       video.src = resolveMediaUrl(streamUrl);
-      video.load();
+      video.load(); // Force immediate load
+      
+      // Optimize loading state
+      video.addEventListener('canplay', () => {
+        setLoading(false);
+      }, { once: true });
       
       // For native HLS, audio tracks are handled via video.audioTracks
       video.addEventListener('loadedmetadata', () => {
@@ -1194,13 +1248,13 @@ export default function WatchSeries() {
               controls={false}
             />
 
-            {/* Professional Loading Overlay */}
+            {/* Professional Loading Overlay - Optimized for mobile */}
             {loading && (
               <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-20">
-                <div className="text-center">
-                  <Loader2 className="h-12 w-12 text-[#E50914] animate-spin mx-auto mb-4" />
-                  <div className="text-white text-lg font-medium">Loading video...</div>
-                  <div className="text-gray-400 text-sm mt-2">Please wait</div>
+                <div className="text-center px-4">
+                  <Loader2 className="h-8 w-8 sm:h-12 sm:w-12 text-[#E50914] animate-spin mx-auto mb-3 sm:mb-4" />
+                  <div className="text-white text-sm sm:text-lg font-medium">Loading video...</div>
+                  <div className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">Please wait</div>
                 </div>
               </div>
             )}
@@ -1381,28 +1435,28 @@ export default function WatchSeries() {
                                         setStreamUrl(null);
                                         await loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
                                         
-                                        // Wait and restore
+                                        // Wait and restore - optimized for faster loading
                                         const waitForReady = (attempt = 0) => {
-                                          const maxAttempts = 30;
+                                          const maxAttempts = 15; // Reduced from 30 (3 seconds max)
                                           if (attempt >= maxAttempts) {
                                             toast.error('Stream took too long to load');
                                             return;
                                           }
                                           if (videoRef.current && videoRef.current.readyState >= 2) {
-                                            setTimeout(() => {
-                                              if (videoRef.current) {
-                                                videoRef.current.currentTime = currentTime;
-                                                if (wasPlaying) {
-                                                  videoRef.current.play().catch(() => {});
-                                                }
-                                                toast.success(`Switched to ${track.name}`);
+                                            // Video is ready, restore immediately
+                                            if (videoRef.current) {
+                                              videoRef.current.currentTime = currentTime;
+                                              if (wasPlaying) {
+                                                videoRef.current.play().catch(() => {});
                                               }
-                                            }, 500);
+                                              toast.success(`Switched to ${track.name}`);
+                                            }
                                           } else {
                                             setTimeout(() => waitForReady(attempt + 1), 200);
                                           }
                                         };
-                                        setTimeout(() => waitForReady(0), 1000);
+                                        // Start checking immediately (no initial delay)
+                                        waitForReady(0);
                                       }
                                     }}
                                     className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors touch-manipulation ${
@@ -1576,3 +1630,4 @@ export default function WatchSeries() {
     </div>
   );
 }
+
