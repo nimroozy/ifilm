@@ -1284,229 +1284,116 @@ export default function WatchSeries() {
                   <span className="text-white/70">{formatTime(duration)}</span>
                 </div>
 
-                {/* Right Side Controls */}
-                <div className="flex items-center gap-2 ml-auto">
-                  {/* Audio Track Selection - Mobile-friendly */}
-                  {audioTracks && audioTracks.length > 0 && (
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowAudioMenu(!showAudioMenu)}
-                        className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-2.5 rounded-full hover:bg-white/20 active:bg-white/25 bg-white/10 backdrop-blur-sm relative touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
-                        aria-label="Audio Tracks"
-                        title={`Audio Tracks (${audioTracks.length} available)`}
-                      >
-                        <Languages className="h-4 w-4 sm:h-5 sm:w-5" />
-                        {audioTracks.length > 1 && (
-                          <span className="absolute -top-1 -right-1 bg-[#E50914] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                            {audioTracks.length}
-                          </span>
-                        )}
-                      </button>
-                      {showAudioMenu && (
-                        <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[200px] z-50 max-h-[300px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                          <div className="p-2">
-                            <div className="text-white text-xs font-semibold mb-2 px-2">Audio Tracks ({audioTracks.length})</div>
-                            {audioTracks.map((track, index) => (
-                              <button
-                                key={index}
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  setShowAudioMenu(false);
-                                  
-                                  // CRITICAL: Jellyfin does NOT support live audio switching on an active stream
-                                  // We MUST stop playback, destroy the HLS instance, and reload with AudioStreamIndex
-                                  const wasPlaying = isPlaying;
-                                  const currentTime = videoRef.current?.currentTime || 0;
-                                  
-                                  console.log('[WatchSeries] Switching audio track - stopping playback and reloading stream:', {
-                                    arrayIndex: index,
-                                    jellyfinIndex: track.index,
-                                    track: track.name,
-                                    currentTime,
-                                    wasPlaying,
-                                  });
-                                  
-                                  // Step 1: Stop current playback
-                                  if (videoRef.current) {
-                                    videoRef.current.pause();
-                                    videoRef.current.currentTime = 0; // Reset to prevent buffering issues
-                                  }
-                                  
-                                  // Step 2: Destroy existing HLS instance
-                                  if (hlsRef.current) {
-                                    console.log('[WatchSeries] Destroying existing HLS instance');
-                                    hlsRef.current.destroy();
-                                    hlsRef.current = null;
-                                  }
-                                  
-                                  // Step 3: Clear video source
-                                  if (videoRef.current) {
-                                    videoRef.current.src = '';
-                                    videoRef.current.load(); // Force reload
-                                  }
-                                  
-                                  // Step 4: Update selected track
-                                  setSelectedAudioTrack(index);
-                                  
-                                  // Step 5: Load new stream URL with AudioStreamIndex
-                                  if (selectedEpisode) {
-                                    // Clear stream URL first to trigger re-initialization
-                                    setStreamUrl(null);
-                                    
-                                    // Load new stream with audio track parameter
-                                    // This will generate a new Jellyfin URL with AudioStreamIndex={track.index}
-                                    await loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
-                                    
-                                    // Step 6: Wait for player to initialize, then restore position and resume
-                                    // The useEffect will handle player initialization when streamUrl changes
-                                    setTimeout(() => {
-                                      if (videoRef.current && videoRef.current.readyState >= 2) {
-                                        videoRef.current.currentTime = currentTime;
-                                        if (wasPlaying) {
-                                          videoRef.current.play().catch((err: any) => {
-                                            console.error('[WatchSeries] Failed to resume playback:', err);
-                                          });
-                                        }
-                                        toast.success(`Switched to ${track.name}`);
-                                      } else {
-                                        // If video not ready, wait a bit more
-                                        setTimeout(() => {
-                                          if (videoRef.current) {
-                                            videoRef.current.currentTime = currentTime;
-                                            if (wasPlaying) {
-                                              videoRef.current.play().catch((err: any) => {
-                                                console.error('[WatchSeries] Failed to resume playback:', err);
-                                              });
-                                            }
-                                            toast.success(`Switched to ${track.name}`);
-                                          }
-                                        }, 1000);
-                                      }
-                                    }, 1000);
-                                  }
-                                  
-                                  // Skip the old HLS.js audio track switching code since Jellyfin doesn't support it
-                                  return;
-                                  
-                                  // Legacy code (not used for Jellyfin)
-                                  if (false && hlsRef.current && hlsRef.current.audioTracks && hlsRef.current.audioTracks.length > 0) {
-                                    try {
-                                      // Find matching HLS audio track by language and codec
-                                      let hlsTrackIndex = -1;
-                                      const trackLang = track.language.toLowerCase();
-                                      const trackCodec = track.codec.toLowerCase();
-                                      
-                                      // First, try to find exact match by language
-                                      for (let i = 0; i < hlsRef.current.audioTracks.length; i++) {
-                                        const hlsTrack = hlsRef.current.audioTracks[i];
-                                        const hlsLang = (hlsTrack.lang || '').toLowerCase();
-                                        const hlsName = (hlsTrack.name || '').toLowerCase();
-                                        
-                                        // Match by language code (e.g., 'eng', 'fas')
-                                        if (hlsLang === trackLang || hlsLang.startsWith(trackLang) || trackLang.startsWith(hlsLang)) {
-                                          hlsTrackIndex = i;
-                                          break;
-                                        }
-                                        // Also try matching by name if it contains the language
-                                        if (hlsName.includes(trackLang) || hlsName.includes(track.name.toLowerCase())) {
-                                          hlsTrackIndex = i;
-                                          break;
-                                        }
-                                      }
-                                      
-                                      // Fallback to array index if no match found
-                                      if (hlsTrackIndex === -1) {
-                                        hlsTrackIndex = Math.min(index, hlsRef.current.audioTracks.length - 1);
-                                        console.warn('[WatchSeries] No language match found, using array index:', hlsTrackIndex);
-                                      }
-                                      
-                                      // Switch audio track WITHOUT pausing or reloading
-                                      hlsRef.current.audioTrack = hlsTrackIndex;
-                                      setSelectedAudioTrack(index);
-                                      
-                                      console.log('[WatchSeries] ✅ Switched to audio track seamlessly:', {
-                                        backendIndex: index,
-                                        hlsIndex: hlsTrackIndex,
-                                        track: track.name,
-                                        hlsTrack: hlsRef.current.audioTracks[hlsTrackIndex],
-                                      });
-                                      
-                                      toast.success(`Switched to ${track.name}`);
-                                    } catch (error) {
-                                      console.error('[WatchSeries] Failed to switch audio track:', error);
-                                      toast.error('Failed to switch audio track');
-                                    }
-                                  } else if (videoRef.current && videoRef.current.audioTracks && videoRef.current.audioTracks.length > 0) {
-                                    // Native HLS (Safari)
-                                    try {
-                                      const trackIndex = Math.min(index, videoRef.current.audioTracks.length - 1);
-                                      if (videoRef.current.audioTracks[trackIndex]) {
-                                        // Disable all tracks first
-                                        for (let i = 0; i < videoRef.current.audioTracks.length; i++) {
-                                          videoRef.current.audioTracks[i].enabled = false;
-                                        }
-                                        // Enable selected track
-                                        videoRef.current.audioTracks[trackIndex].enabled = true;
-                                        setSelectedAudioTrack(index);
-                                        console.log('[WatchSeries] Switched to native audio track:', trackIndex);
-                                        toast.success(`Switched to ${track.name}`);
-                                      }
-                                    } catch (error) {
-                                      console.error('[WatchSeries] Failed to switch native audio track:', error);
-                                      toast.error('Failed to switch audio track');
-                                    }
-                                  } else {
-                                    // Fallback: reload stream with new audio track
-                                    console.log('[WatchSeries] HLS tracks not available, reloading stream with audio track:', index, track);
-                                    setSelectedAudioTrack(index);
-                                    if (selectedEpisode) {
-                                      await loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
-                                      // Restore playback state after reload
-                                      if (videoRef.current && wasPlaying) {
-                                        setTimeout(() => {
-                                          if (videoRef.current) {
-                                            videoRef.current.currentTime = currentTime;
-                                            videoRef.current.play().catch(() => {});
-                                          }
-                                        }, 500);
-                                      }
-                                    }
-                                  }
-                                }}
-                                className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
-                                  selectedAudioTrack === index
-                                    ? 'bg-[#E50914] text-white'
-                                    : 'text-white/80 hover:bg-white/10'
-                                }`}
-                              >
-                                <div className="font-medium">{track.name}</div>
-                                <div className="text-xs opacity-75">{track.language} • {track.codec}</div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {/* Settings Menu */}
+                {/* Right Side Controls - Clean and organized */}
+                <div className="flex items-center gap-1 sm:gap-2 ml-auto">
+                  {/* Settings Menu - Contains Audio, Quality, Speed, and Fullscreen */}
                   <div className="relative">
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setShowSettingsMenu(!showSettingsMenu);
                         setShowAudioMenu(false); // Close audio menu if open
                       }}
-                      className="text-white hover:text-gray-300 transition-colors p-2 rounded-full hover:bg-white/10"
+                      className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-2.5 rounded-full hover:bg-white/20 active:bg-white/25 bg-white/10 backdrop-blur-sm touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center relative"
                       aria-label="Settings"
                       title="Settings"
                     >
-                      <Settings className="h-5 w-5" />
+                      <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
+                      {/* Badge for audio tracks count */}
+                      {audioTracks && audioTracks.length > 1 && (
+                        <span className="absolute -top-1 -right-1 bg-[#E50914] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                          {audioTracks.length}
+                        </span>
+                      )}
                     </button>
                     {showSettingsMenu && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[250px] z-50" onClick={(e) => e.stopPropagation()}>
-                        <div className="p-3">
+                      <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[280px] sm:min-w-[320px] max-w-[90vw] z-[100] max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                        <div className="p-4 space-y-4">
+                          {/* Audio Tracks - Moved to Settings */}
+                          {audioTracks && audioTracks.length > 0 && (
+                            <div>
+                              <div className="text-white text-xs font-semibold mb-3 flex items-center gap-2">
+                                <Languages className="h-4 w-4" />
+                                Audio Tracks ({audioTracks.length})
+                              </div>
+                              <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                                {audioTracks.map((track, index) => (
+                                  <button
+                                    key={`${track.mediaSourceId}-${index}`}
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      setShowSettingsMenu(false);
+                                      
+                                      const wasPlaying = isPlaying;
+                                      const currentTime = videoRef.current?.currentTime || 0;
+                                      
+                                      // Stop playback
+                                      if (videoRef.current) {
+                                        videoRef.current.pause();
+                                        videoRef.current.currentTime = 0;
+                                      }
+                                      
+                                      // Destroy HLS instance
+                                      if (hlsRef.current) {
+                                        hlsRef.current.destroy();
+                                        hlsRef.current = null;
+                                      }
+                                      
+                                      // Clear video source
+                                      if (videoRef.current) {
+                                        videoRef.current.src = '';
+                                        videoRef.current.load();
+                                      }
+                                      
+                                      // Update state
+                                      setSelectedAudioTrack(index);
+                                      
+                                      // Load new stream
+                                      if (selectedEpisode) {
+                                        setStreamUrl(null);
+                                        await loadStreamUrl(selectedEpisode, index, track.mediaSourceId);
+                                        
+                                        // Wait and restore
+                                        const waitForReady = (attempt = 0) => {
+                                          const maxAttempts = 30;
+                                          if (attempt >= maxAttempts) {
+                                            toast.error('Stream took too long to load');
+                                            return;
+                                          }
+                                          if (videoRef.current && videoRef.current.readyState >= 2) {
+                                            setTimeout(() => {
+                                              if (videoRef.current) {
+                                                videoRef.current.currentTime = currentTime;
+                                                if (wasPlaying) {
+                                                  videoRef.current.play().catch(() => {});
+                                                }
+                                                toast.success(`Switched to ${track.name}`);
+                                              }
+                                            }, 500);
+                                          } else {
+                                            setTimeout(() => waitForReady(attempt + 1), 200);
+                                          }
+                                        };
+                                        setTimeout(() => waitForReady(0), 1000);
+                                      }
+                                    }}
+                                    className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors touch-manipulation ${
+                                      selectedAudioTrack === index
+                                        ? 'bg-[#E50914] text-white'
+                                        : 'text-white/80 hover:bg-white/10 active:bg-white/20'
+                                    }`}
+                                  >
+                                    <div className="font-medium">{track.name}</div>
+                                    <div className="text-xs opacity-75 mt-0.5">{track.language.toUpperCase()} • {track.codec.toUpperCase()}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Playback Speed */}
-                          <div className="mb-4">
-                            <div className="text-white text-xs font-semibold mb-2 flex items-center gap-2">
+                          <div>
+                            <div className="text-white text-xs font-semibold mb-3 flex items-center gap-2">
                               <Gauge className="h-4 w-4" />
                               Playback Speed
                             </div>
@@ -1515,10 +1402,10 @@ export default function WatchSeries() {
                                 <button
                                   key={speed}
                                   onClick={() => handlePlaybackSpeedChange(speed)}
-                                  className={`px-3 py-2 rounded text-sm transition-colors ${
+                                  className={`px-3 py-2 rounded text-sm transition-colors touch-manipulation ${
                                     playbackSpeed === speed
                                       ? 'bg-[#E50914] text-white'
-                                      : 'bg-white/10 text-white/80 hover:bg-white/20'
+                                      : 'bg-white/10 text-white/80 hover:bg-white/20 active:bg-white/30'
                                   }`}
                                 >
                                   {speed}x
@@ -1529,17 +1416,20 @@ export default function WatchSeries() {
 
                           {/* Video Quality */}
                           {hlsRef.current && hlsRef.current.levels && hlsRef.current.levels.length > 1 && (
-                            <div className="mb-4">
-                              <div className="text-white text-xs font-semibold mb-2">Quality</div>
-                              <div className="space-y-1">
+                            <div>
+                              <div className="text-white text-xs font-semibold mb-3 flex items-center gap-2">
+                                <Gauge className="h-4 w-4" />
+                                Quality
+                              </div>
+                              <div className="space-y-1 max-h-[200px] overflow-y-auto">
                                 {['auto', '1080p', '720p', '480p'].map((quality) => (
                                   <button
                                     key={quality}
                                     onClick={() => handleQualityChange(quality)}
-                                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                                    className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors touch-manipulation ${
                                       videoQuality === quality
                                         ? 'bg-[#E50914] text-white'
-                                        : 'text-white/80 hover:bg-white/10'
+                                        : 'text-white/80 hover:bg-white/10 active:bg-white/20'
                                     }`}
                                   >
                                     {quality === 'auto' ? 'Auto (Best)' : quality}
@@ -1548,15 +1438,43 @@ export default function WatchSeries() {
                               </div>
                             </div>
                           )}
+
+                          {/* Fullscreen Toggle - Inside Settings */}
+                          <div className="pt-2 border-t border-white/10">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowSettingsMenu(false);
+                                toggleFullscreen();
+                              }}
+                              className="w-full flex items-center justify-between px-3 py-2.5 rounded text-sm transition-colors text-white/80 hover:bg-white/10 active:bg-white/20 touch-manipulation"
+                            >
+                              <div className="flex items-center gap-2">
+                                {document.fullscreenElement || (document as any).webkitFullscreenElement ? (
+                                  <>
+                                    <Minimize2 className="h-4 w-4" />
+                                    <span>Exit Fullscreen</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Maximize className="h-4 w-4" />
+                                    <span>Enter Fullscreen</span>
+                                  </>
+                                )}
+                              </div>
+                              <span className="text-xs text-white/50">F</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}
                   </div>
-                  {/* AirPlay Button - Mobile-friendly */}
+                  
+                  {/* AirPlay Button - Only show if available */}
                   {isAirPlayAvailable && (
                     <button
                       onClick={showAirPlayPicker}
-                      className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-2.5 rounded-full hover:bg-white/20 active:bg-white/25 bg-white/10 backdrop-blur-sm touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
+                      className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-2.5 rounded-full hover:bg-white/20 active:bg-white/25 bg-white/10 backdrop-blur-sm touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                       aria-label="AirPlay"
                       title="AirPlay"
                     >
@@ -1567,16 +1485,16 @@ export default function WatchSeries() {
                         viewBox="0 0 24 24"
                         xmlns="http://www.w3.org/2000/svg"
                       >
-                        <path d="M5 17C3.89543 17 3 16.2325 3 15.2857V6.71429C3 5.76751 3.89543 5 5 5H19C20.1046 5 21 5.76751 21 6.71429V15.2857C21 16.2325 20.1046 17 19 17" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M12 15L17.1962 21H6.80385L12 15Z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M5 17C3.89543 17 3 16.2325 3 15.2857V6.71429C3 5.76751 3.89543 5 5 5H19C20.1046 5 21 5.76751 21 6.71429V15.2857C21 16.2325 20.1046 17 19 17" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                        <path d="M12 15L17.1962 21H6.80385L12 15Z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                       </svg>
                     </button>
                   )}
                   
-                  {/* Fullscreen Button - Mobile-friendly */}
+                  {/* Standalone Fullscreen Button - Quick access */}
                   <button
                     onClick={toggleFullscreen}
-                    className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-3 rounded-full hover:bg-white/25 active:bg-white/30 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30 touch-manipulation min-w-[48px] min-h-[48px] flex items-center justify-center"
+                    className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-3 rounded-full hover:bg-white/25 active:bg-white/30 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                     aria-label="Toggle fullscreen"
                     title="Fullscreen (F)"
                   >
