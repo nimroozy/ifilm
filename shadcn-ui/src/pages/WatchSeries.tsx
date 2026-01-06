@@ -533,16 +533,47 @@ export default function WatchSeries() {
               if (data.details === 'bufferAddCodecError' || data.details === 'bufferAppendError') {
                 console.error('[HLS ERROR] Fatal codec error, destroying and recreating HLS instance');
                 try {
-                  hls.destroy();
-                  hlsRef.current = null;
+                  // Completely destroy HLS instance
+                  if (hlsRef.current) {
+                    hlsRef.current.destroy();
+                    hlsRef.current = null;
+                  }
                   
-                  // Reduced delay for faster recovery
+                  // Completely clear video source and MediaSource
+                  if (videoRef.current) {
+                    videoRef.current.pause();
+                    videoRef.current.src = '';
+                    videoRef.current.removeAttribute('src');
+                    videoRef.current.load();
+                    
+                    // Force garbage collection of MediaSource
+                    if (videoRef.current.srcObject) {
+                      const mediaSource = videoRef.current.srcObject as MediaSource;
+                      if (mediaSource.readyState === 'open') {
+                        try {
+                          mediaSource.endOfStream();
+                        } catch (e) {
+                          // Ignore errors
+                        }
+                      }
+                      videoRef.current.srcObject = null;
+                    }
+                  }
+                  
+                  // Wait longer to ensure MediaSource is fully cleaned up
                   setTimeout(() => {
                     if (streamUrl && videoRef.current) {
                       console.log('[HLS ERROR] Recreating HLS instance with stream URL:', streamUrl);
-                      initializePlayer();
+                      // Force a fresh start
+                      setStreamUrl(null);
+                      setTimeout(() => {
+                        setStreamUrl(streamUrl);
+                        setTimeout(() => {
+                          initializePlayer();
+                        }, 100);
+                      }, 100);
                     }
-                  }, 500); // Reduced from 1000ms
+                  }, 1000); // Increased delay to ensure cleanup
                 } catch (err) {
                   console.error('[HLS ERROR] Failed to destroy/recreate HLS:', err);
                   setError('Failed to recover from codec error. Please refresh the page.');
