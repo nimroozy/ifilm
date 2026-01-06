@@ -833,16 +833,55 @@ export default function Watch() {
   };
 
   const toggleFullscreen = () => {
-    if (videoRef.current) {
-      if (!document.fullscreenElement) {
-        videoRef.current.requestFullscreen().catch(err => {
+    if (!videoRef.current) return;
+    
+    const video = videoRef.current;
+    
+    // Check if already in fullscreen
+    const isFullscreen = !!(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement
+    );
+    
+    if (!isFullscreen) {
+      // Enter fullscreen
+      // Try standard API first
+      if (video.requestFullscreen) {
+        video.requestFullscreen().catch(err => {
           console.error('Error entering fullscreen:', err);
         });
-        setPlayerSize('fullscreen');
-      } else {
-        document.exitFullscreen();
-        setPlayerSize('small');
       }
+      // iOS Safari fallback
+      else if ((video as any).webkitEnterFullscreen) {
+        (video as any).webkitEnterFullscreen();
+      }
+      // WebKit fallback
+      else if ((video as any).webkitRequestFullscreen) {
+        (video as any).webkitRequestFullscreen();
+      }
+      // Mozilla fallback
+      else if ((video as any).mozRequestFullScreen) {
+        (video as any).mozRequestFullScreen();
+      }
+      // IE/Edge fallback
+      else if ((video as any).msRequestFullscreen) {
+        (video as any).msRequestFullscreen();
+      }
+      setPlayerSize('fullscreen');
+    } else {
+      // Exit fullscreen
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen();
+      } else if ((document as any).mozCancelFullScreen) {
+        (document as any).mozCancelFullScreen();
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen();
+      }
+      setPlayerSize('small');
     }
   };
 
@@ -866,17 +905,34 @@ export default function Watch() {
     }
   };
 
-  // Listen for fullscreen changes
+  // Listen for fullscreen changes (all vendor prefixes)
   useEffect(() => {
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && playerSize === 'fullscreen') {
+      const isFullscreen = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      
+      if (!isFullscreen && playerSize === 'fullscreen') {
         setPlayerSize('small');
+      } else if (isFullscreen) {
+        setPlayerSize('fullscreen');
       }
     };
 
+    // Listen to all fullscreen change events
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
     };
   }, [playerSize]);
 
@@ -1106,13 +1162,13 @@ export default function Watch() {
         <div className="w-20" /> {/* Spacer */}
       </div>
 
-      {/* Media Info Above Player */}
-      <div className="relative z-10 px-6 md:px-12 pt-6 pb-4">
+      {/* Media Info Above Player - Mobile-friendly */}
+      <div className="relative z-10 px-3 sm:px-6 md:px-12 pt-4 sm:pt-6 pb-3 sm:pb-4">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-3 leading-tight">
+          <h1 className="text-xl sm:text-3xl md:text-4xl font-bold text-white mb-2 sm:mb-3 leading-tight">
             {media.title}
           </h1>
-          <div className="flex flex-wrap items-center gap-4 text-white/90 mb-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-white/90 text-sm sm:text-base mb-3 sm:mb-4">
             <span className="font-medium">{media.year}</span>
             <span className="text-white/40">•</span>
             <span className="font-medium">{Math.floor(media.duration / 60)} min</span>
@@ -1123,39 +1179,67 @@ export default function Watch() {
             </div>
           </div>
           {media.overview && (
-            <p className="text-gray-300 leading-relaxed text-base max-w-3xl line-clamp-2">
+            <p className="text-gray-300 leading-relaxed text-sm sm:text-base max-w-3xl line-clamp-2 sm:line-clamp-3">
               {media.overview}
             </p>
           )}
         </div>
       </div>
 
-      {/* Video Player - Larger and more prominent */}
+      {/* Video Player - Mobile-friendly and fullscreen-capable */}
       {streamUrl && (
         <div
-          className={`relative z-10 mt-4 mb-8 transition-all duration-300 ${
+          className={`relative z-10 transition-all duration-300 ${
             playerSize === 'small' 
-              ? 'w-full max-w-6xl mx-auto px-4' 
+              ? 'w-full max-w-6xl mx-auto px-2 sm:px-4 mt-4 mb-8' 
               : playerSize === 'medium'
-              ? 'w-full max-w-7xl mx-auto px-4'
-              : 'w-full px-0'
+              ? 'w-full max-w-7xl mx-auto px-2 sm:px-4 mt-4 mb-8'
+              : 'fixed inset-0 z-50 bg-black'
           }`}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
+          onTouchMove={() => {
+            // Show controls on touch (mobile)
+            setShowControls(true);
+            if (controlsTimeoutRef.current) {
+              clearTimeout(controlsTimeoutRef.current);
+            }
+            controlsTimeoutRef.current = window.setTimeout(() => {
+              if (isPlaying) {
+                setShowControls(false);
+              }
+            }, 3000);
+          }}
           onClick={(e) => {
             // Close menus when clicking outside
             if (showSettingsMenu || showAudioMenu) {
               setShowSettingsMenu(false);
               setShowAudioMenu(false);
             }
+            // Toggle play/pause on mobile tap
+            if (window.innerWidth < 768) {
+              const target = e.target as HTMLElement;
+              if (target.tagName !== 'BUTTON' && !target.closest('button') && !target.closest('input')) {
+                togglePlay();
+              }
+            }
           }}
         >
-          <div className="relative w-full bg-black" style={{ aspectRatio: '16/9' }}>
+          <div 
+            className={`relative w-full bg-black ${
+              playerSize === 'fullscreen' 
+                ? 'h-screen' 
+                : 'aspect-video sm:aspect-[16/9]'
+            }`}
+          >
             <video
               ref={videoRef}
               className="w-full h-full object-contain"
               playsInline
+              webkit-playsinline="true"
+              x5-playsinline="true"
               preload="metadata"
+              controls={false}
             />
 
             {/* Professional Loading Overlay */}
@@ -1169,15 +1253,15 @@ export default function Watch() {
               </div>
             )}
 
-            {/* Enhanced Play/Pause Button Overlay - Larger and more prominent */}
+            {/* Enhanced Play/Pause Button Overlay - Mobile-friendly */}
             {showControls && !isPlaying && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-md z-10">
                 <button
                   onClick={togglePlay}
-                  className="bg-[#E50914]/90 hover:bg-[#E50914] backdrop-blur-md rounded-full p-10 transition-all transform hover:scale-110 shadow-2xl border-4 border-white/30 hover:border-white/50"
+                  className="bg-[#E50914]/90 hover:bg-[#E50914] active:bg-[#E50914] backdrop-blur-md rounded-full p-8 sm:p-10 transition-all transform hover:scale-110 active:scale-95 shadow-2xl border-4 border-white/30 hover:border-white/50 touch-manipulation"
                   aria-label="Play"
                 >
-                  <Play className="h-24 w-24 text-white" fill="currentColor" />
+                  <Play className="h-16 w-16 sm:h-24 sm:w-24 text-white" fill="currentColor" />
                 </button>
               </div>
             )}
@@ -1234,36 +1318,36 @@ export default function Watch() {
                 </div>
               </div>
 
-              {/* Enhanced Control Buttons - Larger and clearer */}
-              <div className="px-6 pb-6 flex items-center gap-4">
+              {/* Enhanced Control Buttons - Mobile-friendly with larger touch targets */}
+              <div className="px-3 sm:px-6 pb-4 sm:pb-6 flex items-center gap-2 sm:gap-4">
                 <button
                   onClick={togglePlay}
-                  className="text-white hover:text-white transition-all p-3 rounded-full hover:bg-white/25 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30"
+                  className="text-white hover:text-white active:text-white/80 transition-all p-3 sm:p-3 rounded-full hover:bg-white/25 active:bg-white/30 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30 touch-manipulation min-w-[48px] min-h-[48px] flex items-center justify-center"
                   aria-label={isPlaying ? 'Pause' : 'Play'}
                   title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
                 >
                   {isPlaying ? (
-                    <Pause className="h-7 w-7" fill="currentColor" />
+                    <Pause className="h-6 w-6 sm:h-7 sm:w-7" fill="currentColor" />
                   ) : (
-                    <Play className="h-7 w-7" fill="currentColor" />
+                    <Play className="h-6 w-6 sm:h-7 sm:w-7" fill="currentColor" />
                   )}
                 </button>
 
-                {/* Enhanced Volume Control */}
+                {/* Enhanced Volume Control - Mobile-friendly */}
                 <div className="flex items-center gap-2 group">
                   <button
                     onClick={toggleMute}
-                    className="text-white hover:text-white transition-all p-3 rounded-full hover:bg-white/25 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30"
+                    className="text-white hover:text-white active:text-white/80 transition-all p-3 rounded-full hover:bg-white/25 active:bg-white/30 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30 touch-manipulation min-w-[48px] min-h-[48px] flex items-center justify-center"
                     aria-label={isMuted ? 'Unmute' : 'Mute'}
                     title={isMuted ? 'Unmute (M)' : 'Mute (M)'}
                   >
                     {isMuted || volume === 0 ? (
-                      <VolumeX className="h-6 w-6" />
+                      <VolumeX className="h-5 w-5 sm:h-6 sm:w-6" />
                     ) : (
-                      <Volume2 className="h-6 w-6" />
+                      <Volume2 className="h-5 w-5 sm:h-6 sm:w-6" />
                     )}
                   </button>
-                  <div className="w-0 group-hover:w-28 overflow-hidden transition-all duration-300">
+                  <div className="w-0 group-hover:w-20 sm:group-hover:w-28 overflow-hidden transition-all duration-300 hidden sm:block">
                     <input
                       type="range"
                       min="0"
@@ -1271,7 +1355,7 @@ export default function Watch() {
                       step="0.01"
                       value={isMuted ? 0 : volume}
                       onChange={handleVolumeChange}
-                      className="w-28 h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[#E50914]"
+                      className="w-20 sm:w-28 h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-[#E50914]"
                       style={{
                         background: `linear-gradient(to right, #E50914 0%, #E50914 ${(isMuted ? 0 : volume) * 100}%, rgba(255,255,255,0.2) ${(isMuted ? 0 : volume) * 100}%, rgba(255,255,255,0.2) 100%)`
                       }}
@@ -1279,15 +1363,15 @@ export default function Watch() {
                   </div>
                 </div>
 
-                {/* Enhanced Time Display */}
-                <div className="text-white text-base font-semibold ml-2 font-mono tracking-wide">
+                {/* Enhanced Time Display - Mobile-friendly */}
+                <div className="text-white text-sm sm:text-base font-semibold ml-1 sm:ml-2 font-mono tracking-wide">
                   <span className="text-white">{formatTime(progress)}</span>
-                  <span className="text-white/50 mx-1.5">/</span>
+                  <span className="text-white/50 mx-1 sm:mx-1.5">/</span>
                   <span className="text-white/70">{formatTime(duration)}</span>
                 </div>
 
-                {/* Right Side Controls */}
-                <div className="flex items-center gap-2 ml-auto">
+                {/* Right Side Controls - Mobile-friendly */}
+                <div className="flex items-center gap-1 sm:gap-2 ml-auto">
                   {/* Audio Track Selection - Show if tracks exist */}
                   {audioTracks && audioTracks.length > 0 ? (
                     <div className="relative">
@@ -1297,11 +1381,11 @@ export default function Watch() {
                           setShowAudioMenu(!showAudioMenu);
                           setShowSettingsMenu(false); // Close settings if open
                         }}
-                        className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm relative"
+                        className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-2.5 rounded-full hover:bg-white/20 active:bg-white/25 bg-white/10 backdrop-blur-sm relative touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
                         aria-label="Audio Tracks"
                         title={`Audio Tracks (${audioTracks.length} available)`}
                       >
-                        <Languages className="h-5 w-5" />
+                        <Languages className="h-4 w-4 sm:h-5 sm:w-5" />
                         {audioTracks.length > 1 && (
                           <span className="absolute -top-1 -right-1 bg-[#E50914] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                             {audioTracks.length}
@@ -1587,7 +1671,7 @@ export default function Watch() {
                       )}
                     </div>
                   ) : null}
-                  {/* Settings Menu */}
+                  {/* Settings Menu - Mobile-friendly */}
                   <div className="relative">
                     <button
                       onClick={(e) => {
@@ -1595,11 +1679,11 @@ export default function Watch() {
                         setShowSettingsMenu(!showSettingsMenu);
                         setShowAudioMenu(false); // Close audio menu if open
                       }}
-                      className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
+                      className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-2.5 rounded-full hover:bg-white/20 active:bg-white/25 bg-white/10 backdrop-blur-sm touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
                       aria-label="Settings"
                       title="Settings"
                     >
-                      <Settings className="h-5 w-5" />
+                      <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
                     {showSettingsMenu && (
                       <div className="absolute bottom-full right-0 mb-2 bg-black/95 backdrop-blur-md rounded-lg shadow-xl border border-white/20 min-w-[250px] z-[100]" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
@@ -1666,22 +1750,39 @@ export default function Watch() {
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={showAirPlayPicker}
-                    className="text-white hover:text-white transition-all p-2.5 rounded-full hover:bg-white/20 bg-white/10 backdrop-blur-sm"
-                    aria-label="AirPlay"
-                    title="AirPlay"
-                  >
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
+                  {/* AirPlay Button - Mobile-friendly */}
+                  {isAirPlayAvailable && (
+                    <button
+                      onClick={showAirPlayPicker}
+                      className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-2.5 rounded-full hover:bg-white/20 active:bg-white/25 bg-white/10 backdrop-blur-sm touch-manipulation min-w-[40px] min-h-[40px] flex items-center justify-center"
+                      aria-label="AirPlay"
+                      title="AirPlay"
                     >
-                      <path d="M5 17C3.89543 17 3 16.2325 3 15.2857V6.71429C3 5.76751 3.89543 5 5 5H19C20.1046 5 21 5.76751 21 6.71429V15.2857C21 16.2325 20.1046 17 19 17" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                      <path d="M12 15L17.1962 21H6.80385L12 15Z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                    </svg>
+                      <svg
+                        className="h-4 w-4 sm:h-5 sm:w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path d="M5 17C3.89543 17 3 16.2325 3 15.2857V6.71429C3 5.76751 3.89543 5 5 5H19C20.1046 5 21 5.76751 21 6.71429V15.2857C21 16.2325 20.1046 17 19 17" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                        <path d="M12 15L17.1962 21H6.80385L12 15Z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                      </svg>
+                    </button>
+                  )}
+                  
+                  {/* Fullscreen Button - Mobile-friendly */}
+                  <button
+                    onClick={toggleFullscreen}
+                    className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-3 rounded-full hover:bg-white/25 active:bg-white/30 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30 touch-manipulation min-w-[48px] min-h-[48px] flex items-center justify-center"
+                    aria-label="Toggle fullscreen"
+                    title="Fullscreen (F)"
+                  >
+                    {document.fullscreenElement || (document as any).webkitFullscreenElement ? (
+                      <Minimize2 className="h-5 w-5 sm:h-6 sm:w-6" />
+                    ) : (
+                      <Maximize className="h-5 w-5 sm:h-6 sm:w-6" />
+                    )}
                   </button>
                   <button
                     onClick={toggleFullscreen}
