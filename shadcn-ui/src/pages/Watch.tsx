@@ -403,24 +403,30 @@ export default function Watch() {
         lowLatencyMode: false,
         debug: false,
         // Optimized timeouts for faster loading
-        manifestLoadingTimeOut: 10000, // 10 seconds (reduced from 20)
-        manifestLoadingMaxRetry: 2, // Reduced retries
-        manifestLoadingRetryDelay: 1000, // 1 second delay
-        levelLoadingTimeOut: 10000, // 10 seconds (reduced from 20)
+        manifestLoadingTimeOut: 10000, // 10 seconds
+        manifestLoadingMaxRetry: 2,
+        manifestLoadingRetryDelay: 1000,
+        levelLoadingTimeOut: 10000,
         levelLoadingMaxRetry: 2,
         levelLoadingRetryDelay: 1000,
-        fragLoadingTimeOut: 10000, // 10 seconds (reduced from 20)
+        fragLoadingTimeOut: 10000,
         fragLoadingMaxRetry: 2,
         fragLoadingRetryDelay: 1000,
-        // Performance optimizations
+        // Buffer optimizations to prevent stalling
         startFragPrefetch: true,
-        maxBufferLength: 30, // Reduce buffer for faster startup
-        maxMaxBufferLength: 60,
-        maxBufferSize: 60 * 1000 * 1000, // 60MB max buffer
+        maxBufferLength: 60, // Increased from 30 to prevent stalling
+        maxMaxBufferLength: 120, // Increased from 60
+        maxBufferSize: 120 * 1000 * 1000, // 120MB max buffer (increased from 60MB)
         maxBufferHole: 0.5, // Allow small gaps
+        // Prevent buffer stalling
+        maxStarvationDelay: 4, // Max seconds to wait before reducing quality
+        maxLoadingDelay: 4, // Max seconds to wait before reducing quality
         // Mobile optimizations
         capLevelToPlayerSize: true, // Auto-adjust quality to player size
         abrEwmaDefaultEstimate: 500000, // Initial bitrate estimate
+        // Better buffering strategy
+        nudgeOffset: 0.1, // Nudge offset for buffer stalls
+        nudgeMaxRetry: 3, // Max retries for buffer nudging
       });
 
       const resolvedUrl = resolveMediaUrl(streamUrl);
@@ -675,9 +681,9 @@ export default function Watch() {
         const response = await api.get(`/watch-history/progress/${mediaId}`);
         savedProgress = response.data.progress || 0;
       } catch (error: any) {
-        // Silently fallback to localStorage if backend fails (401/400/404 are expected if not logged in)
-        // Only log if it's an unexpected error
-        if (error.response?.status && error.response.status !== 401 && error.response.status !== 400 && error.response.status !== 404) {
+        // Silently fallback to localStorage if backend fails (401/400/404 are expected if not logged in or no progress)
+        // Don't log 400/401/404 errors as they're expected
+        if (error.response?.status && ![401, 400, 404].includes(error.response.status)) {
           console.warn('[Watch] Failed to get progress from backend:', error.response?.status);
         }
         savedProgress = getLastPosition(mediaId);

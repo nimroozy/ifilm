@@ -569,8 +569,25 @@ export default function WatchSeries() {
               break;
           }
         } else {
-          // Non-fatal errors - just log them
-          console.warn('[HLS WARNING] Non-fatal error:', data);
+          // Non-fatal errors - handle buffer stalling
+          if (data.details === 'bufferStalledError' || data.details === 'bufferNudgeOnStall') {
+            // Buffer stalling is normal during playback, HLS.js handles it automatically
+            // We can optionally reduce quality if stalling persists
+            if (hlsRef.current && hlsRef.current.levels && hlsRef.current.levels.length > 0) {
+              const currentLevel = hlsRef.current.currentLevel;
+              // If we're not already at the lowest quality, try reducing quality
+              if (currentLevel > 0 && currentLevel !== -1) {
+                // Only reduce quality if stalling is severe (buffer < 1 second)
+                const buffer = (data as any).buffer;
+                if (buffer !== undefined && buffer < 1) {
+                  console.log(`[HLS] Buffer stalling detected (${buffer.toFixed(2)}s), reducing quality`);
+                  hlsRef.current.currentLevel = currentLevel - 1;
+                }
+              }
+            }
+          }
+          // Other non-fatal errors - just log them silently
+          // console.warn('[HLS WARNING] Non-fatal error:', data);
         }
       });
 
