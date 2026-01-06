@@ -402,15 +402,25 @@ export default function Watch() {
         enableWorker: true,
         lowLatencyMode: false,
         debug: false,
-        // Increase timeouts for transcoded streams (they take longer to start)
-        manifestLoadingTimeOut: 20000, // 20 seconds for manifest
-        manifestLoadingMaxRetry: 3,
-        levelLoadingTimeOut: 20000, // 20 seconds for level/playlist
-        levelLoadingMaxRetry: 3,
-        fragLoadingTimeOut: 20000, // 20 seconds for fragments
-        fragLoadingMaxRetry: 3,
-        // Allow more time for codec initialization (transcoded streams need this)
+        // Optimized timeouts for faster loading
+        manifestLoadingTimeOut: 10000, // 10 seconds (reduced from 20)
+        manifestLoadingMaxRetry: 2, // Reduced retries
+        manifestLoadingRetryDelay: 1000, // 1 second delay
+        levelLoadingTimeOut: 10000, // 10 seconds (reduced from 20)
+        levelLoadingMaxRetry: 2,
+        levelLoadingRetryDelay: 1000,
+        fragLoadingTimeOut: 10000, // 10 seconds (reduced from 20)
+        fragLoadingMaxRetry: 2,
+        fragLoadingRetryDelay: 1000,
+        // Performance optimizations
         startFragPrefetch: true,
+        maxBufferLength: 30, // Reduce buffer for faster startup
+        maxMaxBufferLength: 60,
+        maxBufferSize: 60 * 1000 * 1000, // 60MB max buffer
+        maxBufferHole: 0.5, // Allow small gaps
+        // Mobile optimizations
+        capLevelToPlayerSize: true, // Auto-adjust quality to player size
+        abrEwmaDefaultEstimate: 500000, // Initial bitrate estimate
       });
 
       const resolvedUrl = resolveMediaUrl(streamUrl);
@@ -632,8 +642,14 @@ export default function Watch() {
 
       hlsRef.current = hls;
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
+      // Native HLS support (Safari) - Optimized for faster loading
       video.src = resolveMediaUrl(streamUrl);
+      video.load(); // Force immediate load
+      
+      // Optimize loading state
+      video.addEventListener('canplay', () => {
+        setLoading(false);
+      }, { once: true });
       
       // For native HLS, audio tracks are handled via video.audioTracks
       video.addEventListener('loadedmetadata', () => {
@@ -847,17 +863,29 @@ export default function Watch() {
     
     if (!isFullscreen) {
       // Enter fullscreen
-      // Try standard API first
+      // iOS Safari requires webkitEnterFullscreen() to be called directly on video element
+      // This must be called from a user gesture (button click)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      
+      if ((isIOS || isSafari) && (video as any).webkitEnterFullscreen) {
+        // iOS Safari: Use native video fullscreen
+        try {
+          (video as any).webkitEnterFullscreen();
+          setPlayerSize('fullscreen');
+          return;
+        } catch (err) {
+          console.error('iOS Safari fullscreen error:', err);
+        }
+      }
+      
+      // Standard fullscreen API for other browsers
       if (video.requestFullscreen) {
         video.requestFullscreen().catch(err => {
           console.error('Error entering fullscreen:', err);
         });
       }
-      // iOS Safari fallback
-      else if ((video as any).webkitEnterFullscreen) {
-        (video as any).webkitEnterFullscreen();
-      }
-      // WebKit fallback
+      // WebKit fallback (Chrome/Safari desktop)
       else if ((video as any).webkitRequestFullscreen) {
         (video as any).webkitRequestFullscreen();
       }
@@ -1242,13 +1270,13 @@ export default function Watch() {
               controls={false}
             />
 
-            {/* Professional Loading Overlay */}
+            {/* Professional Loading Overlay - Optimized for mobile */}
             {loading && (
               <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-20">
-                <div className="text-center">
-                  <Loader2 className="h-12 w-12 text-[#E50914] animate-spin mx-auto mb-4" />
-                  <div className="text-white text-lg font-medium">Loading video...</div>
-                  <div className="text-gray-400 text-sm mt-2">Please wait</div>
+                <div className="text-center px-4">
+                  <Loader2 className="h-8 w-8 sm:h-12 sm:w-12 text-[#E50914] animate-spin mx-auto mb-3 sm:mb-4" />
+                  <div className="text-white text-sm sm:text-lg font-medium">Loading video...</div>
+                  <div className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">Please wait</div>
                 </div>
               </div>
             )}
@@ -1451,28 +1479,28 @@ export default function Watch() {
                                         setStreamUrl(null);
                                         await loadStreamUrl(media.id, index, track.mediaSourceId);
                                         
-                                        // Wait and restore
+                                        // Wait and restore - optimized for faster loading
                                         const waitForReady = (attempt = 0) => {
-                                          const maxAttempts = 30;
+                                          const maxAttempts = 15; // Reduced from 30 (3 seconds max)
                                           if (attempt >= maxAttempts) {
                                             toast.error('Stream took too long to load');
                                             return;
                                           }
                                           if (videoRef.current && videoRef.current.readyState >= 2) {
-                                            setTimeout(() => {
-                                              if (videoRef.current) {
-                                                videoRef.current.currentTime = currentTime;
-                                                if (wasPlaying) {
-                                                  videoRef.current.play().catch(() => {});
-                                                }
-                                                toast.success(`Switched to ${track.name}`);
+                                            // Video is ready, restore immediately
+                                            if (videoRef.current) {
+                                              videoRef.current.currentTime = currentTime;
+                                              if (wasPlaying) {
+                                                videoRef.current.play().catch(() => {});
                                               }
-                                            }, 500);
+                                              toast.success(`Switched to ${track.name}`);
+                                            }
                                           } else {
                                             setTimeout(() => waitForReady(attempt + 1), 200);
                                           }
                                         };
-                                        setTimeout(() => waitForReady(0), 1000);
+                                        // Start checking immediately (no initial delay)
+                                        waitForReady(0);
                                       }
                                     }}
                                     className={`w-full text-left px-3 py-2.5 rounded text-sm transition-colors touch-manipulation ${

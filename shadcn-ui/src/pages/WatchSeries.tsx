@@ -649,17 +649,29 @@ export default function WatchSeries() {
     
     if (!isFullscreen) {
       // Enter fullscreen
-      // Try standard API first
+      // iOS Safari requires webkitEnterFullscreen() to be called directly on video element
+      // This must be called from a user gesture (button click)
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      
+      if ((isIOS || isSafari) && (video as any).webkitEnterFullscreen) {
+        // iOS Safari: Use native video fullscreen
+        try {
+          (video as any).webkitEnterFullscreen();
+          setPlayerSize('fullscreen');
+          return;
+        } catch (err) {
+          console.error('iOS Safari fullscreen error:', err);
+        }
+      }
+      
+      // Standard fullscreen API for other browsers
       if (video.requestFullscreen) {
         video.requestFullscreen().catch(err => {
           console.error('Error entering fullscreen:', err);
         });
       }
-      // iOS Safari fallback
-      else if ((video as any).webkitEnterFullscreen) {
-        (video as any).webkitEnterFullscreen();
-      }
-      // WebKit fallback
+      // WebKit fallback (Chrome/Safari desktop)
       else if ((video as any).webkitRequestFullscreen) {
         (video as any).webkitRequestFullscreen();
       }
@@ -1212,9 +1224,20 @@ export default function WatchSeries() {
                 showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
               }`}
             >
-              {/* Progress Bar - Mobile-friendly */}
+              {/* Progress Bar - Mobile optimized */}
               <div className="px-3 sm:px-6 pt-3 pb-2">
-                <div className="relative">
+                <div 
+                  className="relative"
+                  onTouchMove={(e) => {
+                    // Show time on touch for mobile
+                    const touch = e.touches[0];
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = touch.clientX - rect.left;
+                    const percentage = Math.max(0, Math.min(1, x / rect.width));
+                    const hoverTime = percentage * duration;
+                    // Could show time tooltip on mobile if needed
+                  }}
+                >
                   <div className="absolute inset-0 h-2 sm:h-1.5 bg-white/20 rounded-full" />
                   <div 
                     className="absolute inset-y-0 left-0 h-2 sm:h-1.5 bg-[#E50914] rounded-full transition-all duration-150"
@@ -1227,7 +1250,12 @@ export default function WatchSeries() {
                     value={progress}
                     onChange={handleSeek}
                     className="absolute inset-0 w-full h-2 sm:h-1.5 opacity-0 cursor-pointer z-10 touch-manipulation"
-                    style={{ WebkitAppearance: 'none', appearance: 'none' }}
+                    style={{ 
+                      WebkitAppearance: 'none',
+                      appearance: 'none',
+                      // Mobile touch optimization
+                      touchAction: 'pan-y',
+                    }}
                   />
                 </div>
               </div>
@@ -1439,13 +1467,17 @@ export default function WatchSeries() {
                             </div>
                           )}
 
-                          {/* Fullscreen Toggle - Inside Settings */}
+                          {/* Fullscreen Toggle - Inside Settings, Safari optimized */}
                           <div className="pt-2 border-t border-white/10">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                e.preventDefault();
                                 setShowSettingsMenu(false);
-                                toggleFullscreen();
+                                // Small delay to ensure menu closes before fullscreen
+                                setTimeout(() => {
+                                  toggleFullscreen();
+                                }, 100);
                               }}
                               className="w-full flex items-center justify-between px-3 py-2.5 rounded text-sm transition-colors text-white/80 hover:bg-white/10 active:bg-white/20 touch-manipulation"
                             >
@@ -1491,9 +1523,12 @@ export default function WatchSeries() {
                     </button>
                   )}
                   
-                  {/* Standalone Fullscreen Button - Quick access */}
+                  {/* Standalone Fullscreen Button - Quick access, Safari optimized */}
                   <button
-                    onClick={toggleFullscreen}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFullscreen();
+                    }}
                     className="text-white hover:text-white active:text-white/80 transition-all p-2 sm:p-3 rounded-full hover:bg-white/25 active:bg-white/30 bg-white/15 backdrop-blur-md border border-white/20 hover:border-white/30 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                     aria-label="Toggle fullscreen"
                     title="Fullscreen (F)"
