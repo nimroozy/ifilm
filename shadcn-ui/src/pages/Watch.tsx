@@ -529,59 +529,35 @@ export default function Watch() {
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error('[HLS ERROR]', {
-          type: data.type,
-          fatal: data.fatal,
-          details: data.details,
-          error: data.error,
-          url: data.url,
-          response: data.response,
-        });
-        
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error('[HLS ERROR] Fatal network error, trying to recover...');
-              // Try to recover from network errors
+              console.error('[HLS ERROR] Network error:', data);
+              // Try to recover quickly
               try {
                 hls.startLoad();
               } catch (err) {
-                console.error('[HLS ERROR] Recovery failed, reloading stream...', err);
-                // If recovery fails, reload the entire stream
-                if (streamUrl) {
-                  setTimeout(() => {
-                    hls.loadSource(resolveMediaUrl(streamUrl));
-                  }, 1000);
-                }
+                console.error('[HLS ERROR] Failed to recover from network error:', err);
+                setError('Network error. Please check your connection and try again.');
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.error('[HLS ERROR] Fatal media error, trying to recover...');
+              console.error('[HLS ERROR] Media error:', data);
               
-              // Check if it's a codec error - these cannot be recovered from
+              // Check for fatal codec errors that require stream reload
               if (data.details === 'bufferAddCodecError' || data.details === 'bufferAppendError') {
-                console.error('[HLS ERROR] Codec incompatibility detected - destroying and recreating HLS instance');
-                // Codec errors are fatal - we need to completely destroy and recreate
+                console.error('[HLS ERROR] Fatal codec error, destroying and recreating HLS instance');
                 try {
                   hls.destroy();
                   hlsRef.current = null;
                   
-                  // Clear video source
-                  if (videoRef.current) {
-                    videoRef.current.src = '';
-                    videoRef.current.load();
-                  }
-                  
-                  // Wait a bit, then recreate HLS instance
+                  // Reduced delay for faster recovery
                   setTimeout(() => {
                     if (streamUrl && videoRef.current) {
                       console.log('[HLS ERROR] Recreating HLS instance with stream URL:', streamUrl);
                       initializePlayer();
-                    } else {
-                      console.error('[HLS ERROR] Cannot recreate - streamUrl or videoRef is missing');
-                      setError('Codec incompatibility. Please try a different audio track or refresh the page.');
                     }
-                  }, 1000);
+                  }, 500); // Reduced from 1000ms
                 } catch (err) {
                   console.error('[HLS ERROR] Failed to destroy/recreate HLS:', err);
                   setError('Failed to recover from codec error. Please refresh the page.');
@@ -596,7 +572,7 @@ export default function Watch() {
                   if (streamUrl) {
                     setTimeout(() => {
                       hls.loadSource(resolveMediaUrl(streamUrl));
-                    }, 1000);
+                    }, 500); // Reduced from 1000ms
                   }
                 }
               }
@@ -608,8 +584,35 @@ export default function Watch() {
               break;
           }
         } else {
-          // Non-fatal errors - just log them
-          console.warn('[HLS WARNING] Non-fatal error:', data);
+          // Non-fatal errors - handle buffer stalling silently
+          if (data.details === 'bufferStalledError' || data.details === 'bufferNudgeOnStall') {
+            // Buffer stalling is normal during playback, HLS.js handles it automatically
+            // Completely suppress these warnings - they're expected behavior
+            // Only reduce quality if stalling is severe and persistent
+            if (hlsRef.current && hlsRef.current.levels && hlsRef.current.levels.length > 0) {
+              const currentLevel = hlsRef.current.currentLevel;
+              // If we're not already at the lowest quality, try reducing quality
+              if (currentLevel > 0 && currentLevel !== -1) {
+                // Only reduce quality if stalling is severe (buffer < 0.5 second)
+                const buffer = (data as any).buffer;
+                if (buffer !== undefined && buffer < 0.5) {
+                  // Silently reduce quality
+                  hlsRef.current.currentLevel = currentLevel - 1;
+                }
+              }
+            }
+            // Don't log these - they're normal HLS.js behavior
+            return;
+          }
+          
+          // Suppress fragLoadTimeOut warnings if they're non-fatal
+          if (data.details === 'fragLoadTimeOut' && !data.fatal) {
+            // HLS.js will retry automatically
+            return;
+          }
+          
+          // Other non-fatal errors - log only unexpected ones
+          // console.warn('[HLS WARNING] Non-fatal error:', data);
         }
       });
 
