@@ -292,9 +292,16 @@ export default function Watch() {
       }
       
       // Double-check we're not redirecting before setting stream URL
+      // Only set streamUrl directly if not switching audio tracks (normal load)
+      // When switching audio tracks, we store it in pendingStreamUrlRef for callback ref
       if (!redirectingRef.current) {
-        setStreamUrl(finalStreamUrl);
+        if (audioTrackIndex === undefined || audioTrackIndex === null) {
+          setStreamUrl(finalStreamUrl);
+        }
       }
+      
+      // Return the stream URL for use by caller
+      return finalStreamUrl;
     } catch (err: any) {
       console.error('[Watch] Failed to load stream URL:', err);
       console.error('[Watch] Error details:', {
