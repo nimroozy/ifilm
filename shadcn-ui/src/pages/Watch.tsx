@@ -53,6 +53,7 @@ export default function Watch() {
   const hlsRef = useRef<Hls | null>(null);
   const redirectingRef = useRef<boolean>(false);
   const videoElementKeyRef = useRef<string>('');
+  const pendingStreamUrlRef = useRef<string | null>(null);
   
   const [media, setMedia] = useState<MediaDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -139,21 +140,8 @@ export default function Watch() {
       return;
     }
     
-    // Check if video element key has changed (indicating element was recreated)
-    const currentKey = `video-${media?.id}-${selectedAudioTrack}`;
-    if (videoElementKeyRef.current === currentKey && videoElementKeyRef.current !== '') {
-      // Video element hasn't been recreated yet, wait a bit longer
-      console.log('[Watch] Waiting for video element recreation...');
-      const waitTimer = setTimeout(() => {
-        if (videoRef.current && streamUrl) {
-          console.log('[Watch] Video element ready, initializing player');
-          initializePlayer();
-        }
-      }, 200);
-      return () => clearTimeout(waitTimer);
-    }
-    
     // Update the key ref to track this element
+    const currentKey = `video-${media?.id}-${selectedAudioTrack}`;
     videoElementKeyRef.current = currentKey;
     
     console.log('[Watch] Initializing player with stream URL:', streamUrl);
@@ -165,7 +153,7 @@ export default function Watch() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl, selectedAudioTrack, playbackSpeed, media?.id]);
+  }, [streamUrl, playbackSpeed]);
 
   const loadMediaDetails = async () => {
     try {
@@ -1287,7 +1275,20 @@ export default function Watch() {
           >
             <video
               key={`video-${media?.id}-${selectedAudioTrack}`}
-              ref={videoRef}
+              ref={(el) => {
+                videoRef.current = el;
+                // When video element is mounted/recreated, initialize player if we have a pending stream URL
+                if (el && pendingStreamUrlRef.current && !redirectingRef.current) {
+                  console.log('[Watch] Video element mounted, initializing with pending stream URL:', pendingStreamUrlRef.current);
+                  // Small delay to ensure element is fully ready
+                  setTimeout(() => {
+                    if (videoRef.current && pendingStreamUrlRef.current) {
+                      setStreamUrl(pendingStreamUrlRef.current);
+                      pendingStreamUrlRef.current = null;
+                    }
+                  }, 50);
+                }
+              }}
               className="w-full h-full object-contain"
               playsInline
               webkit-playsinline="true"
@@ -1522,16 +1523,22 @@ export default function Watch() {
                                       // Wait for React to recreate the video element (key change triggers unmount/mount)
                                       await new Promise(resolve => setTimeout(resolve, 300));
                                       
-                                      // Load new stream
+                                      // Load new stream URL but don't set it yet - store it for when video element is recreated
                                       if (media?.id) {
                                         setStreamUrl(null);
-                                        await loadStreamUrl(media.id, index, track.mediaSourceId);
+                                        const streamResponse = await loadStreamUrl(media.id, index, track.mediaSourceId);
+                                        
+                                        // Store the stream URL to be set when video element is recreated
+                                        if (streamResponse) {
+                                          pendingStreamUrlRef.current = streamResponse;
+                                        }
                                         
                                         // Wait for video element to be recreated and stream to load
                                         const waitForReady = (attempt = 0) => {
                                           const maxAttempts = 50; // 50 attempts * 200ms = 10 seconds
                                           if (attempt >= maxAttempts) {
                                             toast.error('Stream took too long to load. Please try again.');
+                                            pendingStreamUrlRef.current = null;
                                             return;
                                           }
                                           
