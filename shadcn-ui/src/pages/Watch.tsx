@@ -409,24 +409,27 @@ export default function Watch() {
         levelLoadingTimeOut: 10000,
         levelLoadingMaxRetry: 2,
         levelLoadingRetryDelay: 1000,
-        fragLoadingTimeOut: 10000,
-        fragLoadingMaxRetry: 2,
+        fragLoadingTimeOut: 20000, // Increased from 10000 to handle slow connections
+        fragLoadingMaxRetry: 3, // Increased retries
         fragLoadingRetryDelay: 1000,
         // Buffer optimizations to prevent stalling
         startFragPrefetch: true,
-        maxBufferLength: 60, // Increased from 30 to prevent stalling
-        maxMaxBufferLength: 120, // Increased from 60
-        maxBufferSize: 120 * 1000 * 1000, // 120MB max buffer (increased from 60MB)
+        maxBufferLength: 90, // Increased to 90 seconds for better buffering
+        maxMaxBufferLength: 180, // Increased to 180 seconds
+        maxBufferSize: 180 * 1000 * 1000, // 180MB max buffer
         maxBufferHole: 0.5, // Allow small gaps
-        // Prevent buffer stalling
-        maxStarvationDelay: 4, // Max seconds to wait before reducing quality
-        maxLoadingDelay: 4, // Max seconds to wait before reducing quality
+        // Prevent buffer stalling - more aggressive settings
+        maxStarvationDelay: 2, // Reduce quality faster when starving
+        maxLoadingDelay: 2, // Reduce quality faster when loading slowly
         // Mobile optimizations
         capLevelToPlayerSize: true, // Auto-adjust quality to player size
         abrEwmaDefaultEstimate: 500000, // Initial bitrate estimate
         // Better buffering strategy
         nudgeOffset: 0.1, // Nudge offset for buffer stalls
-        nudgeMaxRetry: 3, // Max retries for buffer nudging
+        nudgeMaxRetry: 5, // More retries for buffer nudging
+        // Aggressive buffering
+        highBufferWatchdogPeriod: 2, // Check buffer more frequently
+        nudgeRate: 0.1, // Nudge rate for buffer recovery
       });
 
       const resolvedUrl = resolveMediaUrl(streamUrl);
