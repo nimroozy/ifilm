@@ -1268,6 +1268,7 @@ export default function Watch() {
             }`}
           >
             <video
+              key={`video-${media?.id}-${selectedAudioTrack}`}
               ref={videoRef}
               className="w-full h-full object-contain"
               playsInline
