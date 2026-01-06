@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '@/services/api';
 import { MediaItem, ContinueWatchingItem } from '@/types/media.types';
-import { Play, Plus, Info } from 'lucide-react';
+import { Play, Plus, Info, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
@@ -302,26 +302,104 @@ export default function Home() {
       {/* Continue Watching - Only show if authenticated */}
       {isAuthenticated && continueWatching.length > 0 && (
         <div className="px-8 md:px-16 py-8">
-          <h2 className="text-2xl font-semibold text-white mb-4">Continue Watching</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {continueWatching.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => handlePlayClick(item)}
-                className="cursor-pointer"
-              >
-                <div className="group relative transition-transform hover:scale-105">
-                  <img
-                    src={resolveMediaUrl(item.posterUrl)}
-                    alt={item.title}
-                    className="w-full rounded-md"
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#2A2A2A]">
-                    <div className="h-full bg-[#E50914]" style={{ width: `${item.progress || 45}%` }} />
+          <div className="flex items-center gap-2 mb-6">
+            <Clock className="h-6 w-6 text-[#E50914]" />
+            <h2 className="text-2xl md:text-3xl font-bold text-white">Continue Watching</h2>
+          </div>
+          <div className="relative">
+            {/* Horizontal scrollable container */}
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 -mx-2 px-2">
+              {continueWatching.map((item) => {
+                const progressPercentage = item.progress || 0;
+                const remainingPercentage = 100 - progressPercentage;
+                
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => handlePlayClick(item)}
+                    className="group relative flex-shrink-0 w-[160px] md:w-[200px] lg:w-[240px] cursor-pointer transition-all duration-300 hover:scale-105 hover:z-10"
+                  >
+                    {/* Card Container */}
+                    <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-[#1F1F1F] shadow-lg group-hover:shadow-2xl transition-all duration-300">
+                      {/* Poster Image */}
+                      <img
+                        src={resolveMediaUrl(item.posterUrl)}
+                        alt={item.title}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = getPlaceholderImage();
+                        }}
+                      />
+                      
+                      {/* Gradient Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      
+                      {/* Progress Bar - Always visible */}
+                      <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-[#2A2A2A]/80 backdrop-blur-sm">
+                        <div 
+                          className="h-full bg-[#E50914] transition-all duration-300" 
+                          style={{ width: `${progressPercentage}%` }} 
+                        />
+                      </div>
+                      
+                      {/* Hover Overlay with Info */}
+                      <div className="absolute inset-0 flex flex-col justify-end p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        {/* Play Button */}
+                        <div className="flex items-center justify-center mb-3">
+                          <div className="bg-white/90 hover:bg-white rounded-full p-3 transition-all duration-200 hover:scale-110">
+                            <Play className="h-6 w-6 text-black" fill="currentColor" />
+                          </div>
+                        </div>
+                        
+                        {/* Title */}
+                        <h3 className="text-white font-semibold text-sm md:text-base mb-2 line-clamp-2 drop-shadow-lg">
+                          {item.title}
+                        </h3>
+                        
+                        {/* Progress Info */}
+                        <div className="flex items-center gap-2 text-white/90 text-xs">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>{Math.round(progressPercentage)}% watched</span>
+                          </div>
+                        </div>
+                        
+                        {/* Resume Button */}
+                        <button className="mt-3 w-full bg-[#E50914] hover:bg-[#F40612] text-white text-sm font-semibold py-2 px-4 rounded transition-colors duration-200">
+                          Resume
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Title below card (visible on mobile) */}
+                    <div className="mt-2 md:hidden">
+                      <p className="text-white text-sm font-medium line-clamp-1">{item.title}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1 bg-[#2A2A2A] rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-[#E50914] transition-all" 
+                            style={{ width: `${progressPercentage}%` }} 
+                          />
+                        </div>
+                        <span className="text-[#B3B3B3] text-xs">{Math.round(progressPercentage)}%</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
+            
+            {/* Scroll hint (only on desktop if scrollable) */}
+            <style>{`
+              .scrollbar-hide {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+              }
+              .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+              }
+            `}</style>
           </div>
         </div>
       )}
