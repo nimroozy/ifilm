@@ -1244,8 +1244,15 @@ export default function WatchSeries() {
               playsInline
               webkit-playsinline="true"
               x5-playsinline="true"
-              preload="metadata"
+              preload="auto"
               controls={false}
+              style={{
+                // Mobile optimizations
+                WebkitTransform: 'translateZ(0)',
+                transform: 'translateZ(0)',
+                // Hardware acceleration
+                willChange: 'auto',
+              }}
             />
 
             {/* Professional Loading Overlay - Optimized for mobile */}
