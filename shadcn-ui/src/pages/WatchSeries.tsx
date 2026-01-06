@@ -36,6 +36,7 @@ export default function WatchSeries() {
   const [searchParams] = useSearchParams();
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const videoElementKeyRef = useRef<string>('');
   
   const [series, setSeries] = useState<SeriesDetails | null>(null);
   const [loading, setLoading] = useState(true);

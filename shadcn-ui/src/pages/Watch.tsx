@@ -52,6 +52,7 @@ export default function Watch() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const redirectingRef = useRef<boolean>(false);
+  const videoElementKeyRef = useRef<string>('');
   
   const [media, setMedia] = useState<MediaDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,6 +139,23 @@ export default function Watch() {
       return;
     }
     
+    // Check if video element key has changed (indicating element was recreated)
+    const currentKey = `video-${media?.id}-${selectedAudioTrack}`;
+    if (videoElementKeyRef.current === currentKey && videoElementKeyRef.current !== '') {
+      // Video element hasn't been recreated yet, wait a bit longer
+      console.log('[Watch] Waiting for video element recreation...');
+      const waitTimer = setTimeout(() => {
+        if (videoRef.current && streamUrl) {
+          console.log('[Watch] Video element ready, initializing player');
+          initializePlayer();
+        }
+      }, 200);
+      return () => clearTimeout(waitTimer);
+    }
+    
+    // Update the key ref to track this element
+    videoElementKeyRef.current = currentKey;
+    
     console.log('[Watch] Initializing player with stream URL:', streamUrl);
     initializePlayer();
 
@@ -147,7 +165,7 @@ export default function Watch() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl, selectedAudioTrack, playbackSpeed]);
+  }, [streamUrl, selectedAudioTrack, playbackSpeed, media?.id]);
 
   const loadMediaDetails = async () => {
     try {
@@ -1498,8 +1516,11 @@ export default function Watch() {
                                         saveAudioTrack(media.id, index);
                                       }
                                       
+                                      // Reset video element key ref to force detection of new element
+                                      videoElementKeyRef.current = '';
+                                      
                                       // Wait for React to recreate the video element (key change triggers unmount/mount)
-                                      await new Promise(resolve => setTimeout(resolve, 100));
+                                      await new Promise(resolve => setTimeout(resolve, 300));
                                       
                                       // Load new stream
                                       if (media?.id) {
