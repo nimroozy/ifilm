@@ -1457,23 +1457,42 @@ export default function Watch() {
                                         wasPlaying,
                                       });
                                       
-                                      // Stop playback
+                                      // Stop playback and completely clean up
                                       if (videoRef.current) {
                                         videoRef.current.pause();
                                         videoRef.current.currentTime = 0;
+                                        
+                                        // Clear MediaSource if it exists
+                                        if (videoRef.current.srcObject) {
+                                          const mediaSource = videoRef.current.srcObject as MediaSource;
+                                          if (mediaSource.readyState === 'open') {
+                                            try {
+                                              mediaSource.endOfStream();
+                                            } catch (e) {
+                                              // Ignore errors
+                                            }
+                                          }
+                                          videoRef.current.srcObject = null;
+                                        }
+                                        
+                                        // Clear video source
+                                        videoRef.current.src = '';
+                                        videoRef.current.removeAttribute('src');
+                                        videoRef.current.load();
                                       }
                                       
-                                      // Destroy HLS instance
+                                      // Destroy HLS instance completely
                                       if (hlsRef.current) {
-                                        hlsRef.current.destroy();
+                                        try {
+                                          hlsRef.current.destroy();
+                                        } catch (e) {
+                                          console.warn('[AUDIO] Error destroying HLS:', e);
+                                        }
                                         hlsRef.current = null;
                                       }
                                       
-                                      // Clear video source
-                                      if (videoRef.current) {
-                                        videoRef.current.src = '';
-                                        videoRef.current.load();
-                                      }
+                                      // Wait a bit to ensure cleanup is complete
+                                      await new Promise(resolve => setTimeout(resolve, 300));
                                       
                                       // Update state
                                       setSelectedAudioTrack(index);
